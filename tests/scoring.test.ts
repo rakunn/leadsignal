@@ -1,0 +1,376 @@
+import { describe, expect, test } from "vitest";
+import { scoreLeads } from "@/lib/scoring/score";
+import {
+  isHighQuality,
+  qualifiedCplCents,
+  SCORING_VERSION,
+  WEIGHTS,
+} from "@/lib/scoring/constants";
+import type { RawLead } from "@/lib/scoring/types";
+
+let seq = 0;
+function lead(overrides: Partial<RawLead> = {}): RawLead {
+  seq++;
+  return {
+    createdAt: new Date(Date.parse("2026-06-01T10:00:00Z") + seq * 600_000),
+    email: `person${seq}@example.com`,
+    phone: `+1415555${2671 + seq}`,
+    campaign: "Campaign X",
+    adSet: "as-1",
+    creative: "cr-1",
+    platform: "Meta",
+    landingPage: `lp-${seq}`,
+    costCents: 200,
+    emailOpened: false,
+    emailClicked: false,
+    smsClicked: false,
+    converted: false,
+    revenueCents: 0,
+    ...overrides,
+  };
+}
+
+describe("validity sub-score", () => {
+  test("a fully valid, non-duplicate lead scores 100", () => {
+    const [s] = scoreLeads([lead()]);
+    expect(s.validityScore).toBe(100);
+  });
+
+  test("disposable email domain loses 15 points and is flagged", () => {
+    const [s] = scoreLeads([lead({ email: "x@mailinator.com" })]);
+    expect(s.validityScore).toBe(85);
+    expect(s.riskFlags).toContain("disposable_email");
+  });
+
+  test("invalid phone loses 25 points and is flagged", () => {
+    const [s] = scoreLeads([lead({ phone: "555-0100" })]);
+    expect(s.validityScore).toBe(75);
+    expect(s.riskFlags).toContain("invalid_phone");
+  });
+
+  test("missing email loses both email points (50) and is flagged", () => {
+    const [s] = scoreLeads([lead({ email: null })]);
+    expect(s.validityScore).toBe(50);
+    expect(s.riskFlags).toContain("invalid_email");
+  });
+
+  test("syntactically broken email is treated as invalid", () => {
+    const [s] = scoreLeads([lead({ email: "not-an-email" })]);
+    expect(s.riskFlags).toContain("invalid_email");
+    expect(s.validityScore).toBe(50);
+  });
+});
+
+describe("duplicate detection", () => {
+  test("gmail dot/plus variants are duplicates; first by time wins", () => {
+    const first = lead({
+      email: "anna.b@gmail.com",
+      phone: "+14155550001",
+      createdAt: new Date("2026-06-01T09:00:00Z"),
+    });
+    const second = lead({
+      email: "annab+promo@gmail.com",
+      phone: "+14155550002",
+      createdAt: new Date("2026-06-01T11:00:00Z"),
+    });
+    const [a, b] = scoreLeads([first, second]);
+    expect(a.isDuplicate).toBe(false);
+    expect(b.isDuplicate).toBe(true);
+    expect(b.duplicateOfIndex).toBe(0);
+    expect(b.riskFlags).toContain("duplicate");
+    expect(b.segment).toBe("suppress");
+    expect(b.compositeScore).toBeLessThanOrEqual(15);
+  });
+
+  test("same phone with different emails is a duplicate", () => {
+    const [, b] = scoreLeads([
+      lead({ email: "one@corp.com", phone: "+14155550009" }),
+      lead({ email: "two@corp.com", phone: "+14155550009" }),
+    ]);
+    expect(b.isDuplicate).toBe(true);
+  });
+
+  test("earliest lead wins even when it appears later in the array", () => {
+    const later = lead({
+      email: "same@corp.com",
+      createdAt: new Date("2026-06-02T10:00:00Z"),
+    });
+    const earlier = lead({
+      email: "same@corp.com",
+      createdAt: new Date("2026-06-01T08:00:00Z"),
+    });
+    const [a, b] = scoreLeads([later, earlier]);
+    expect(a.isDuplicate).toBe(true);
+    expect(a.duplicateOfIndex).toBe(1);
+    expect(b.isDuplicate).toBe(false);
+  });
+});
+
+describe("burst detection", () => {
+  function burstLeads(count: number, spacingSeconds: number): RawLead[] {
+    return Array.from({ length: count }, (_, i) =>
+      lead({
+        landingPage: "lp-burst",
+        createdAt: new Date(
+          Date.parse("2026-06-01T12:00:00Z") + i * spacingSeconds * 1000,
+        ),
+      }),
+    );
+  }
+
+  test("5+ leads on one landing page within 120s are all flagged", () => {
+    const scored = scoreLeads(burstLeads(5, 20));
+    for (const s of scored) {
+      expect(s.riskFlags).toContain("burst_submission");
+      expect(s.validityScore).toBe(90);
+    }
+  });
+
+  test("4 leads in the window are not flagged", () => {
+    const scored = scoreLeads(burstLeads(4, 20));
+    for (const s of scored) {
+      expect(s.riskFlags).not.toContain("burst_submission");
+    }
+  });
+
+  test("5 leads spread over 10 minutes are not flagged", () => {
+    const scored = scoreLeads(burstLeads(5, 150));
+    for (const s of scored) {
+      expect(s.riskFlags).not.toContain("burst_submission");
+    }
+  });
+});
+
+describe("intent sub-score", () => {
+  test("open + click + sms = 100", () => {
+    const [s] = scoreLeads([
+      lead({ emailOpened: true, emailClicked: true, smsClicked: true }),
+    ]);
+    expect(s.intentScore).toBe(100);
+  });
+
+  test("open only = 30", () => {
+    const [s] = scoreLeads([lead({ emailOpened: true })]);
+    expect(s.intentScore).toBe(30);
+  });
+
+  test("no engagement = 0 with no_engagement flag", () => {
+    const [s] = scoreLeads([lead()]);
+    expect(s.intentScore).toBe(0);
+    expect(s.riskFlags).toContain("no_engagement");
+  });
+});
+
+describe("value sub-score", () => {
+  test("leads from a high-revenue campaign outrank a zero-revenue campaign", () => {
+    const rich = Array.from({ length: 10 }, (_, i) =>
+      lead({
+        campaign: "Rich",
+        landingPage: "lp-rich",
+        revenueCents: 5000,
+        converted: true,
+        email: `rich${i}@corp.com`,
+        phone: `+1415555${String(1000 + i)}`,
+      }),
+    );
+    const poor = Array.from({ length: 10 }, (_, i) =>
+      lead({
+        campaign: "Poor",
+        landingPage: "lp-poor",
+        revenueCents: 0,
+        email: `poor${i}@corp.com`,
+        phone: `+1415555${String(2000 + i)}`,
+      }),
+    );
+    const scored = scoreLeads([...rich, ...poor]);
+    const richScore = scored[0].valueScore;
+    const poorScore = scored[10].valueScore;
+    expect(richScore).toBeGreaterThan(poorScore);
+    expect(richScore).toBeGreaterThan(60);
+    expect(poorScore).toBeLessThan(40);
+    expect(scored[10].riskFlags).toContain("low_value_source");
+  });
+});
+
+describe("composite score", () => {
+  test("composite equals the weighted, rounded sum of sub-scores", () => {
+    const scored = scoreLeads([
+      lead({ emailOpened: true }),
+      lead({ email: "x@mailinator.com", emailClicked: true }),
+      lead(),
+    ]);
+    for (const s of scored) {
+      const expected = Math.round(
+        WEIGHTS.validity * s.validityScore +
+          WEIGHTS.intent * s.intentScore +
+          WEIGHTS.value * s.valueScore,
+      );
+      expect(s.compositeScore).toBe(expected);
+    }
+  });
+
+  test("missing email AND invalid phone caps composite at 20", () => {
+    const [s] = scoreLeads([
+      lead({
+        email: null,
+        phone: "banana",
+        emailOpened: true,
+        emailClicked: true,
+        smsClicked: true,
+      }),
+    ]);
+    expect(s.riskFlags).toContain("invalid_email");
+    expect(s.riskFlags).toContain("invalid_phone");
+    expect(s.compositeScore).toBeLessThanOrEqual(20);
+    expect(s.segment).toBe("suppress");
+  });
+});
+
+describe("conversion probability", () => {
+  test("is calibrated: mean(p) tracks the observed conversion rate", () => {
+    const leadsIn = Array.from({ length: 100 }, (_, i) =>
+      lead({
+        converted: i < 20,
+        revenueCents: i < 20 ? 4000 : 0,
+        emailOpened: i % 2 === 0,
+        emailClicked: i % 3 === 0,
+        email: `cal${i}@corp.com`,
+        phone: `+1415555${String(3000 + i)}`,
+      }),
+    );
+    const scored = scoreLeads(leadsIn);
+    const mean =
+      scored.reduce((acc, s) => acc + s.conversionProbability, 0) /
+      scored.length;
+    expect(Math.abs(mean - 0.2)).toBeLessThan(0.03);
+  });
+
+  test("zero conversions stays finite and non-negative", () => {
+    const scored = scoreLeads([lead(), lead(), lead()]);
+    for (const s of scored) {
+      expect(Number.isFinite(s.conversionProbability)).toBe(true);
+      expect(s.conversionProbability).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  test("higher intent means higher probability, all else equal", () => {
+    const [low, high] = scoreLeads([
+      lead({ email: "a@corp.com", phone: "+14155550021" }),
+      lead({
+        email: "b@corp.com",
+        phone: "+14155550022",
+        emailOpened: true,
+        emailClicked: true,
+        smsClicked: true,
+      }),
+    ]);
+    expect(high.conversionProbability).toBeGreaterThan(
+      low.conversionProbability,
+    );
+  });
+});
+
+describe("segments", () => {
+  test("burst-flagged lead with otherwise good signals goes to review", () => {
+    const burst = Array.from({ length: 5 }, (_, i) =>
+      lead({
+        landingPage: "lp-burst",
+        createdAt: new Date(Date.parse("2026-06-01T12:00:00Z") + i * 1000),
+        emailOpened: true,
+        emailClicked: true,
+        email: `b${i}@corp.com`,
+        phone: `+1415555${String(4000 + i)}`,
+      }),
+    );
+    const scored = scoreLeads(burst);
+    for (const s of scored) expect(s.segment).toBe("review");
+  });
+
+  test("one invalid contact channel with decent engagement goes to review", () => {
+    const [s] = scoreLeads([
+      lead({ phone: "nope", emailOpened: true, emailClicked: true }),
+    ]);
+    expect(s.segment).toBe("review");
+  });
+
+  test("high composite + high probability lands high_value", () => {
+    // High-conversion dataset so calibration pushes probabilities up.
+    const winners = Array.from({ length: 10 }, (_, i) =>
+      lead({
+        campaign: "Winners",
+        landingPage: "lp-win",
+        emailOpened: true,
+        emailClicked: true,
+        smsClicked: true,
+        converted: i < 4,
+        revenueCents: i < 4 ? 9000 : 0,
+        email: `w${i}@corp.com`,
+        phone: `+1415555${String(5000 + i)}`,
+      }),
+    );
+    const scored = scoreLeads(winners);
+    expect(scored[0].segment).toBe("high_value");
+  });
+
+  test("clean lead with mild engagement is nurture", () => {
+    const [s] = scoreLeads([
+      lead({ emailOpened: true, emailClicked: true }),
+      // companion so the value percentile isn't degenerate
+      lead({ revenueCents: 1000, converted: true }),
+    ]);
+    expect(s.segment).toBe("nurture");
+  });
+
+  test("clean lead with no engagement and weak source is test", () => {
+    const scored = scoreLeads([
+      lead(),
+      lead({ revenueCents: 8000, converted: true }),
+    ]);
+    expect(scored[0].segment).toBe("test");
+  });
+});
+
+describe("cost flags", () => {
+  test("expensive low-quality lead is flagged high_cost_low_quality", () => {
+    const scored = scoreLeads([
+      lead({ costCents: 2000, email: null, phone: "junk" }),
+      ...Array.from({ length: 9 }, (_, i) =>
+        lead({ costCents: 200, email: `c${i}@corp.com` }),
+      ),
+    ]);
+    expect(scored[0].riskFlags).toContain("high_cost_low_quality");
+    expect(scored[1].riskFlags).not.toContain("high_cost_low_quality");
+  });
+});
+
+describe("breakdown receipt", () => {
+  test("every scored lead carries a non-empty breakdown that sums to its sub-scores", () => {
+    const [s] = scoreLeads([lead({ emailOpened: true })]);
+    expect(s.breakdown.length).toBeGreaterThan(0);
+    const validityPoints = s.breakdown
+      .filter((b) => b.scope === "validity")
+      .reduce((acc, b) => acc + b.points, 0);
+    expect(validityPoints).toBe(s.validityScore);
+    const intentPoints = s.breakdown
+      .filter((b) => b.scope === "intent")
+      .reduce((acc, b) => acc + b.points, 0);
+    expect(intentPoints).toBe(s.intentScore);
+  });
+});
+
+describe("HQ definition", () => {
+  test("HQ = composite ≥ 70 and not suppress", () => {
+    expect(isHighQuality(70, "nurture")).toBe(true);
+    expect(isHighQuality(69, "high_value")).toBe(false);
+    expect(isHighQuality(90, "suppress")).toBe(false);
+  });
+
+  test("qualified CPL divides spend by HQ leads and is null with none", () => {
+    expect(qualifiedCplCents(84000, 10)).toBe(8400);
+    expect(qualifiedCplCents(84000, 0)).toBeNull();
+  });
+
+  test("scoring version is stamped", () => {
+    expect(SCORING_VERSION).toMatch(/v\d/);
+  });
+});
