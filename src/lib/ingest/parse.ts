@@ -2,6 +2,8 @@ import Papa from "papaparse";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { datasets, leads } from "@/db/schema";
+import { SCORING_VERSION } from "@/lib/scoring/constants";
+import { scoreDataset } from "@/lib/scoring/persist";
 import { REQUIRED_COLUMNS } from "./columns";
 
 /** A lead row ready for insertion (raw fields only; scoring fills the rest). */
@@ -148,7 +150,14 @@ export async function runIngest(
 
     await db
       .update(datasets)
-      .set({ status: "ready" })
+      .set({ status: "scoring" })
+      .where(eq(datasets.id, datasetId));
+
+    await scoreDataset(datasetId);
+
+    await db
+      .update(datasets)
+      .set({ status: "ready", scoringVersion: SCORING_VERSION })
       .where(eq(datasets.id, datasetId));
   } catch (err) {
     await db
