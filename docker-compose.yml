@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: leadsignal
+      POSTGRES_PASSWORD: leadsignal
+      POSTGRES_DB: leadsignal
+    ports:
+      - "5432:5432"
+    volumes:
+      - leadsignal-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leadsignal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  leadsignal-pgdata:
