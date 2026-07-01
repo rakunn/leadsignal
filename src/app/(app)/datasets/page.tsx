@@ -3,6 +3,7 @@ import { desc } from "drizzle-orm";
 import { db } from "@/db";
 import { datasets } from "@/db/schema";
 import { DatasetStatusBadge } from "@/components/dataset-status-badge";
+import { SampleCard } from "@/components/sample-card";
 import { UploadCard } from "@/components/upload-card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,7 +37,10 @@ export default async function DatasetsPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_1fr]">
-        <UploadCard />
+        <div className="space-y-6">
+          <SampleCard />
+          <UploadCard />
+        </div>
 
         <div className="min-w-0">
           {list.length === 0 ? (
