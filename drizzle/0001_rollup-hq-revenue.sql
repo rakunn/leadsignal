@@ -1,0 +1,1 @@
+ALTER TABLE "rollups" ADD COLUMN "hq_revenue_cents" bigint DEFAULT 0 NOT NULL;

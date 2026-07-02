@@ -2,6 +2,7 @@ import Papa from "papaparse";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { datasets, leads } from "@/db/schema";
+import { materializeRollups } from "@/db/rollups";
 import { SCORING_VERSION } from "@/lib/scoring/constants";
 import { scoreDataset } from "@/lib/scoring/persist";
 import { REQUIRED_COLUMNS } from "./columns";
@@ -154,6 +155,7 @@ export async function runIngest(
       .where(eq(datasets.id, datasetId));
 
     await scoreDataset(datasetId);
+    await materializeRollups(datasetId);
 
     await db
       .update(datasets)

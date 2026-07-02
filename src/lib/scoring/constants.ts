@@ -59,7 +59,9 @@ export const SEGMENT_THRESHOLDS = {
   suppressValidityBelow: 40,
   suppressCompositeBelow: 25,
   highValueCompositeMin: 75,
-  highValueProbabilityMin: 0.25,
+  /** Calibrated probabilities track the dataset's conversion rate (typically
+   *  1–5%), so this is "well above a typical lead", not an absolute bar. */
+  highValueProbabilityMin: 0.08,
   nurtureCompositeMin: 50,
   testCompositeMin: 25,
   /** "decent engagement" bar for the review segment. */
