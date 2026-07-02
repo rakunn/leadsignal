@@ -94,6 +94,7 @@ export default async function LeadsPage({
     scoreBreakdown: l.scoreBreakdown,
     isDuplicate: l.isDuplicate,
     createdAtIso: l.createdAt.toISOString(),
+    explanation: l.explanation,
   }));
 
   const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));

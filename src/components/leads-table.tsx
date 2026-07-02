@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ExplainButton } from "@/components/explain-button";
 import { SegmentBadge } from "@/components/segment-badge";
 import { SignalBars, bandFromScore } from "@/components/signal-bars";
 import { fmtPct, fmtUsdFromCents } from "@/lib/format";
@@ -48,6 +49,7 @@ export interface LeadRowData {
   scoreBreakdown: ScoreBreakdownItem[] | null;
   isDuplicate: boolean;
   createdAtIso: string;
+  explanation: string | null;
 }
 
 function Engagement({ on }: { on: boolean }) {
@@ -82,13 +84,7 @@ function SubScoreRow({ label, score }: { label: string; score: number }) {
   );
 }
 
-export function LeadsTable({
-  rows,
-  explainSlot,
-}: {
-  rows: LeadRowData[];
-  explainSlot?: (lead: LeadRowData) => React.ReactNode;
-}) {
+export function LeadsTable({ rows }: { rows: LeadRowData[] }) {
   const [open, setOpen] = useState<LeadRowData | null>(null);
 
   return (
@@ -280,7 +276,10 @@ export function LeadsTable({
                   </div>
                 )}
 
-                {explainSlot?.(open)}
+                <ExplainButton
+                  leadId={open.id}
+                  cachedExplanation={open.explanation}
+                />
               </div>
             </>
           )}
