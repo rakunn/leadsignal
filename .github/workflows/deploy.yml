@@ -1,0 +1,85 @@
+# Deploy LeadSignal to Cloud Run.
+#
+# One-time setup lives in docs/DEPLOY.md. This workflow expects these
+# repository VARIABLES (Settings → Secrets and variables → Actions → Variables):
+#   GCP_PROJECT_ID        e.g. leadsignal-demo
+#   GCP_REGION            e.g. europe-west1
+#   GCP_WIF_PROVIDER      projects/…/locations/global/workloadIdentityPools/…/providers/…
+#   GCP_SERVICE_ACCOUNT   deployer@PROJECT.iam.gserviceaccount.com
+#   CLOUD_SQL_INSTANCE    PROJECT:REGION:leadsignal-pg
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/leadsignal/app:${{ github.sha }}
+  MIGRATE_IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/leadsignal/migrate:${{ github.sha }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test # includes the demo-story guardrail
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation — no key JSON anywhere
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push images
+        run: |
+          docker build --target runner -t "$IMAGE" .
+          docker build --target migrate -t "$MIGRATE_IMAGE" .
+          docker push "$IMAGE"
+          docker push "$MIGRATE_IMAGE"
+
+      - name: Run database migrations (Cloud Run Job)
+        run: |
+          gcloud run jobs update leadsignal-migrate \
+            --image "$MIGRATE_IMAGE" \
+            --region ${{ vars.GCP_REGION }} \
+            --quiet
+          gcloud run jobs execute leadsignal-migrate \
+            --region ${{ vars.GCP_REGION }} \
+            --wait
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy leadsignal \
+            --image "$IMAGE" \
+            --region ${{ vars.GCP_REGION }} \
+            --add-cloudsql-instances ${{ vars.CLOUD_SQL_INSTANCE }} \
+            --set-secrets DATABASE_URL=leadsignal-database-url:latest,ANTHROPIC_API_KEY=leadsignal-anthropic-key:latest,APP_PASSWORD=leadsignal-app-password:latest,AUTH_COOKIE_SECRET=leadsignal-cookie-secret:latest \
+            --cpu 1 --memory 2Gi --concurrency 40 \
+            --timeout 900 \
+            --min-instances 0 --max-instances 3 \
+            --allow-unauthenticated \
+            --quiet
