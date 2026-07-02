@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.gitignore
+.env*
+.idea
+.playwright-mcp
+Dockerfile
+docker-compose.yml
+README.md
+docs
+tests
+.github

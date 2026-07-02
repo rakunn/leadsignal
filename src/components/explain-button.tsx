@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ interface Explanation {
   cached: boolean;
 }
 
+/** Render with key={leadId} so state resets when the drawer switches leads. */
 export function ExplainButton({
   leadId,
   cachedExplanation,
@@ -24,15 +25,6 @@ export function ExplainButton({
       : null,
   );
   const [pending, setPending] = useState(false);
-
-  // Reset when the drawer switches leads.
-  useEffect(() => {
-    setResult(
-      cachedExplanation
-        ? { explanation: cachedExplanation, keyFactors: [], cached: true }
-        : null,
-    );
-  }, [leadId, cachedExplanation]);
 
   async function explain() {
     setPending(true);

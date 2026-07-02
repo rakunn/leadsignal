@@ -277,6 +277,7 @@ export function LeadsTable({ rows }: { rows: LeadRowData[] }) {
                 )}
 
                 <ExplainButton
+                  key={open.id}
                   leadId={open.id}
                   cachedExplanation={open.explanation}
                 />
