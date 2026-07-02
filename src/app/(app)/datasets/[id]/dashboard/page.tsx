@@ -23,38 +23,16 @@ import {
 } from "@/components/ui/table";
 import { assignSeriesColors } from "@/lib/chart-colors";
 import { fmtInt, fmtPct, fmtUsdFromCents } from "@/lib/format";
-import { deriveMetrics, sumTotals, type RollupTotals } from "@/lib/metrics";
+import { deriveMetrics, sumTotals } from "@/lib/metrics";
+import {
+  rollupTotalsByValue as totalsBy,
+  type Dimension,
+  type ValueTotals,
+} from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-type Dimension = (typeof rollupDimension.enumValues)[number];
 const DIMENSIONS = new Set(rollupDimension.enumValues);
-
-interface ValueTotals extends RollupTotals {
-  value: string;
-}
-
-async function totalsBy(
-  datasetId: string,
-  dimension: Dimension,
-): Promise<ValueTotals[]> {
-  const rows = await db
-    .select({
-      value: rollups.dimensionValue,
-      leadCount: sql<number>`sum(${rollups.leadCount})`.mapWith(Number),
-      hqLeadCount: sql<number>`sum(${rollups.hqLeadCount})`.mapWith(Number),
-      suppressCount: sql<number>`sum(${rollups.suppressCount})`.mapWith(Number),
-      spendCents: sql<number>`sum(${rollups.spendCents})`.mapWith(Number),
-      revenueCents: sql<number>`sum(${rollups.revenueCents})`.mapWith(Number),
-      hqRevenueCents: sql<number>`sum(${rollups.hqRevenueCents})`.mapWith(Number),
-      conversions: sql<number>`sum(${rollups.conversions})`.mapWith(Number),
-      scoreSum: sql<number>`sum(${rollups.scoreSum})`.mapWith(Number),
-    })
-    .from(rollups)
-    .where(and(eq(rollups.datasetId, datasetId), eq(rollups.dimension, dimension)))
-    .groupBy(rollups.dimensionValue);
-  return rows;
-}
 
 export default async function DashboardPage({
   params,
