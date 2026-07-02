@@ -128,6 +128,9 @@ export const rollups = pgTable(
     revenueCents: bigint("revenue_cents", { mode: "number" })
       .notNull()
       .default(0),
+    hqRevenueCents: bigint("hq_revenue_cents", { mode: "number" })
+      .notNull()
+      .default(0),
     conversions: integer("conversions").notNull().default(0),
     scoreSum: bigint("score_sum", { mode: "number" }).notNull().default(0),
   },
