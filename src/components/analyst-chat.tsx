@@ -3,21 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Brain, ChevronDown, Loader2, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { RecommendationCardView } from "@/components/recommendation-card";
 import {
-  RecommendationCardView,
-  type CardAction,
-} from "@/components/recommendation-card";
+  reduceParts,
+  type Part,
+  type StreamEvent,
+} from "@/components/analyst-parts";
 import { cn } from "@/lib/utils";
-
-type Part =
-  | { kind: "thinking"; text: string }
-  | { kind: "text"; text: string }
-  | { kind: "tool"; name: string; summary?: string; done: boolean }
-  | { kind: "card"; action: CardAction };
 
 interface ChatMsg {
   role: "user" | "assistant";
@@ -107,15 +104,15 @@ export function AnalystChat({ datasetId }: { datasetId: string }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
-  function appendPart(mutate: (parts: Part[]) => void) {
+  function applyEvent(event: StreamEvent) {
+    // Must stay pure: StrictMode runs updaters twice with the same prev.
     setMessages((prev) => {
-      const next = [...prev];
-      const last = next[next.length - 1];
+      const last = prev[prev.length - 1];
       if (!last || last.role !== "assistant") return prev;
-      const parts = [...last.parts];
-      mutate(parts);
-      next[next.length - 1] = { ...last, parts };
-      return next;
+      return [
+        ...prev.slice(0, -1),
+        { ...last, parts: reduceParts(last.parts, event) },
+      ];
     });
   }
 
@@ -143,9 +140,7 @@ export function AnalystChat({ datasetId }: { datasetId: string }) {
         const { error } = await res
           .json()
           .catch(() => ({ error: "The analyst is unavailable." }));
-        appendPart((parts) =>
-          parts.push({ kind: "text", text: `⚠️ ${error ?? "Request failed."}` }),
-        );
+        applyEvent({ type: "error", message: error ?? "Request failed." });
         return;
       }
 
@@ -166,68 +161,23 @@ export function AnalystChat({ datasetId }: { datasetId: string }) {
             .split("\n")
             .find((l) => l.startsWith("data: "));
           if (!dataLine) continue;
-          const event = JSON.parse(dataLine.slice(6)) as {
-            type: string;
-            [k: string]: unknown;
-          };
+          const event = JSON.parse(dataLine.slice(6)) as
+            | { type: "meta"; conversationId: string }
+            | { type: "done" }
+            | StreamEvent;
 
-          switch (event.type) {
-            case "meta":
-              conversationRef.current = event.conversationId as string;
-              break;
-            case "thinking_delta":
-              appendPart((parts) => {
-                const last = parts[parts.length - 1];
-                if (last?.kind === "thinking") last.text += event.t as string;
-                else parts.push({ kind: "thinking", text: event.t as string });
-              });
-              break;
-            case "text_delta":
-              appendPart((parts) => {
-                const last = parts[parts.length - 1];
-                if (last?.kind === "text") last.text += event.t as string;
-                else parts.push({ kind: "text", text: event.t as string });
-              });
-              break;
-            case "tool_start":
-              appendPart((parts) =>
-                parts.push({ kind: "tool", name: event.name as string, done: false }),
-              );
-              break;
-            case "tool_result":
-              appendPart((parts) => {
-                const chip = [...parts]
-                  .reverse()
-                  .find(
-                    (p): p is Extract<Part, { kind: "tool" }> =>
-                      p.kind === "tool" && p.name === event.name && !p.done,
-                  );
-                if (chip) {
-                  chip.done = true;
-                  chip.summary = event.summary as string;
-                }
-              });
-              break;
-            case "card":
-              appendPart((parts) =>
-                parts.push({ kind: "card", action: event.action as CardAction }),
-              );
-              break;
-            case "error":
-              appendPart((parts) =>
-                parts.push({ kind: "text", text: `⚠️ ${event.message as string}` }),
-              );
-              break;
+          if (event.type === "meta") {
+            conversationRef.current = event.conversationId;
+          } else if (event.type !== "done") {
+            applyEvent(event);
           }
         }
       }
     } catch {
-      appendPart((parts) =>
-        parts.push({
-          kind: "text",
-          text: "⚠️ Connection dropped — try asking again.",
-        }),
-      );
+      applyEvent({
+        type: "error",
+        message: "Connection dropped — try asking again.",
+      });
     } finally {
       setStreaming(false);
       router.refresh(); // refresh the action log panel
@@ -283,7 +233,10 @@ export function AnalystChat({ datasetId }: { datasetId: string }) {
                   case "text":
                     return (
                       <div key={j} className="max-w-none text-sm leading-relaxed">
-                        <ReactMarkdown components={MD_COMPONENTS}>
+                        <ReactMarkdown
+                          remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
+                          components={MD_COMPONENTS}
+                        >
                           {part.text}
                         </ReactMarkdown>
                       </div>
