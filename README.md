@@ -159,5 +159,9 @@ unless `DEPLOY_ENABLED=true` and the required GCP variables are configured;
 see [the deployment runbook](docs/DEPLOY.md). Remaining dependency advisories
 and their scope are recorded in [DEPENDENCIES.md](docs/DEPENDENCIES.md).
 
-Before changing repository visibility, choose a license and run a history-aware
-secret check. No reuse license has been selected yet.
+Before changing repository visibility, run a history-aware secret check.
+
+## License
+
+LeadSignal is licensed under the [MIT License](LICENSE).
+Copyright (c) 2026 Rafal Bagrowski. Third-party dependencies retain their own licenses.

@@ -19,6 +19,7 @@ simulated-approval model is intentional.
 Next.js APIs may differ from older versions. Read the relevant installed guide
 under `node_modules/next/dist/docs/` before changing framework-dependent code.
 
-Use synthetic fixtures and never commit credentials or real lead exports. A
-reuse license is still an owner decision; do not add one without agreement.
+Use synthetic fixtures and never commit credentials or real lead exports.
+LeadSignal uses the [MIT License](LICENSE). Preserve applicable copyright and
+license notices when incorporating third-party code.
 Dependency update evidence belongs in [DEPENDENCIES.md](docs/DEPENDENCIES.md).

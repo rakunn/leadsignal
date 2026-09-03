@@ -46,7 +46,7 @@ Verified baseline: lint, TypeScript, production build, all 46 tests with isolate
 - Generate the sample business scenario using a canonical weekday schedule anchored to 2026-06-30 UTC, then shift timestamps to the requested window. Keep the existing public generator signature, seed variability, and 30-day window.
 - Provision synthetic test data independently of the developer's database. Database fixtures own their dataset/conversation IDs and clean up their rows. The seventh analyst tool must actually execute in its integration test.
 - Use Node 22 for repeatable project checks, matching the existing Docker/CI choice. Select dependency patches against the registry/advisories when implementation reaches that task; do not blindly apply forced audit fixes or downgrade Drizzle.
-- A license remains an owner decision. Recording the missing decision does not authorize choosing reuse terms on the owner's behalf. It does not block the technical fixes.
+- License selection remained an owner decision during implementation. **Resolved 2026-09-03:** the owner selected MIT, added in a separate commit after the technical fixes; see [LICENSE](../../../LICENSE).
 
 ## Global constraints
 
