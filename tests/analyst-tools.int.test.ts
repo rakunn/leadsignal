@@ -1,30 +1,23 @@
-/**
- * Integration test for the analyst tool handlers against a live local DB.
- * Skipped unless RUN_DB_TESTS=1 (needs docker-compose Postgres + a ready
- * sample dataset). Run: RUN_DB_TESTS=1 npx vitest run tests/analyst-tools.int.test.ts
- */
-import { describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 const enabled = process.env.RUN_DB_TESTS === "1";
 
 describe.skipIf(!enabled)("analyst tools (integration)", () => {
-  test("all seven tools return well-formed JSON against the sample dataset", async () => {
-    const { db } = await import("@/db");
-    const { datasets } = await import("@/db/schema");
-    const { desc, eq } = await import("drizzle-orm");
+  let fixture: Awaited<ReturnType<typeof import("./helpers/database").createDatasetFixture>>;
+  let conversationId: string;
+  beforeAll(async () => {
+    const { createDatasetFixture, createConversationFixture } = await import("./helpers/database");
+    const { generateSampleLeads, SAMPLE_SEED } = await import("@/lib/sample-data/generate");
+    fixture = await createDatasetFixture(generateSampleLeads(SAMPLE_SEED, new Date("2026-06-30T00:00:00Z")));
+    conversationId = await createConversationFixture(fixture.datasetId);
+  }, 30_000);
+  afterAll(async () => { await fixture?.cleanup(); });
+  test("six read-only tools return well-formed JSON against an owned sample dataset", async () => {
     const { buildAnalystTools } = await import("@/lib/analyst/tools");
-
-    const [dataset] = await db
-      .select({ id: datasets.id })
-      .from(datasets)
-      .where(eq(datasets.status, "ready"))
-      .orderBy(desc(datasets.createdAt))
-      .limit(1);
-    expect(dataset).toBeDefined();
 
     const emitted: string[] = [];
     const cards: unknown[] = [];
-    const tools = buildAnalystTools(dataset.id, "00000000-0000-0000-0000-000000000000", {
+    const tools = buildAnalystTools(fixture.datasetId, conversationId, {
       toolResult: (name) => emitted.push(name),
       card: (a) => cards.push(a),
     });

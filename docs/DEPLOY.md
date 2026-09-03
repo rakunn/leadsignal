@@ -140,3 +140,19 @@ multi-minute turn (the `--timeout 900` matters here).
 - Idle (min-instances 0): < $10/mo beyond Cloud SQL (~$10–30/mo `db-g1-small`).
 - Analyst turns run Claude Opus 4.8 ≈ $0.10–0.40/turn (prompt caching on);
   explanations are Haiku ≈ $0.002/lead, cached in the DB after first request.
+
+## Historical rollup migration and isolated tests
+
+Run the normal migration command before starting the updated app:
+`npx drizzle-kit migrate`. Migration `0002_backfill-hq-revenue` repairs HQ revenue
+on existing rollups using the historical definition (score ≥ 70, not suppressed).
+It leaves spend, lead counts, IDs and other measures unchanged. Do not edit or
+rerun older migrations manually. For a large database, measure this update on a
+copy before release; it updates every rollup.
+
+For database checks, use `TEST_DATABASE_URL` pointing to a disposable Postgres
+server whose user can create databases, then run `npm run test:db`. The harness
+creates and drops its own randomly named database, migrates it, and seeds only
+synthetic fixtures. It never loads `.env.local` or uses `DATABASE_URL` as a
+fallback. Optional arguments select integration files, for example
+`npm run test:db -- tests/migrations.int.test.ts`.
