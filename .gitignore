@@ -43,3 +43,6 @@ next-env.d.ts
 
 # playwright MCP artifacts
 .playwright-mcp/
+
+# Local editor metadata
+.idea/
