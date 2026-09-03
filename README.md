@@ -103,6 +103,11 @@ must still have the same number of fields as the header: quote values that
 contain commas, line breaks, or quotes, and do not repeat a header name after
 trimming and lowercasing.
 
+`cost` and `revenue` are optional. When present, use a nonnegative plain decimal
+with no currency symbol, separators, exponent, or more than two decimal places
+(for example, `1234.50`). Invalid amounts skip that row and are reported with
+the other row-level validation errors.
+
 Uploads accept CSV files up to 32 MiB, with a 34 MiB request-body limit,
 25,000 data records, and fields up to 4,096 characters. The demo processes one
 upload or sample dataset at a time per server process; a busy response can be

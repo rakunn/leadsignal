@@ -5,6 +5,7 @@ import { datasets, leads } from "@/db/schema";
 import { materializeRollups } from "@/db/rollups";
 import { SCORING_VERSION } from "@/lib/scoring/constants";
 import { scoreDataset } from "@/lib/scoring/persist";
+import { parseMoneyCents } from "./money";
 import {
   MAX_FIELD_CHARS,
   MAX_UPLOAD_ROWS,
@@ -36,12 +37,6 @@ const TRUTHY = new Set(["1", "true", "yes", "y", "t"]);
 
 function toBool(v: string | undefined): boolean {
   return v !== undefined && TRUTHY.has(v.trim().toLowerCase());
-}
-
-function toCents(v: string | undefined): number {
-  if (v === undefined || v.trim() === "") return 0;
-  const n = Number.parseFloat(v);
-  return Number.isFinite(n) ? Math.round(n * 100) : 0;
 }
 
 function toNullable(v: string | undefined): string | null {
@@ -160,6 +155,28 @@ export function parseCsvLeads(csvText: string): ParsedCsv {
       }
       return;
     }
+
+    let costCents: number;
+    let revenueCents: number;
+    try {
+      costCents = parseMoneyCents(r.cost);
+    } catch {
+      skipped++;
+      if (sampleErrors.length < 5) {
+        sampleErrors.push(`Row ${i + 2}: invalid monetary value in cost`);
+      }
+      return;
+    }
+    try {
+      revenueCents = parseMoneyCents(r.revenue);
+    } catch {
+      skipped++;
+      if (sampleErrors.length < 5) {
+        sampleErrors.push(`Row ${i + 2}: invalid monetary value in revenue`);
+      }
+      return;
+    }
+
     rows.push({
       leadExternalId: toNullable(r.lead_id),
       createdAt,
@@ -170,12 +187,12 @@ export function parseCsvLeads(csvText: string): ParsedCsv {
       creative: toNullable(r.creative),
       platform: toNullable(r.platform),
       landingPage: toNullable(r.landing_page),
-      costCents: toCents(r.cost),
+      costCents,
       emailOpened: toBool(r.email_opened),
       emailClicked: toBool(r.email_clicked),
       smsClicked: toBool(r.sms_clicked),
       converted: toBool(r.converted),
-      revenueCents: toCents(r.revenue),
+      revenueCents,
     });
   });
 
