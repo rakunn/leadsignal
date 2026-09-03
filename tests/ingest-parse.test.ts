@@ -48,4 +48,27 @@ describe("CSV structural contract", () => {
     expect(parsed.rows).toHaveLength(0);
     expect(parsed.skipped).toBe(2);
   });
+
+  it("skips rows with invalid money without silently converting them to zero", () => {
+    const parsed = parseCsvLeads(
+      [
+        "created_at,campaign,cost,revenue",
+        "2026-06-01,Spring,0.29,21474836.47",
+        "2026-06-02,Summer,12oops,10",
+        "2026-06-03,Fall,10,1e3",
+      ].join("\n"),
+    );
+
+    expect(parsed.rows).toHaveLength(1);
+    expect(parsed.rows[0]).toMatchObject({
+      campaign: "Spring",
+      costCents: 29,
+      revenueCents: 2_147_483_647,
+    });
+    expect(parsed.skipped).toBe(2);
+    expect(parsed.sampleErrors).toEqual([
+      "Row 3: invalid monetary value in cost",
+      "Row 4: invalid monetary value in revenue",
+    ]);
+  });
 });

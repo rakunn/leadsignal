@@ -31,7 +31,7 @@ type Preview = {
 type Phase =
   | { kind: "idle" }
   | { kind: "uploading"; processed: number; total: number | null }
-  | { kind: "done"; id: string };
+  | { kind: "done"; id: string; skipped: number; errors: string[] };
 
 export function UploadCard() {
   const router = useRouter();
@@ -106,9 +106,11 @@ export function UploadCard() {
         setPhase({ kind: "idle" });
         return;
       }
-      const { id, rows } = (await res.json()) as { id: string; rows: number };
+      const { id, rows, skipped = 0, sampleErrors = [] } = (await res.json()) as {
+        id: string; rows: number; skipped?: number; sampleErrors?: string[];
+      };
       toast.success(`Ingested ${rows.toLocaleString()} leads.`);
-      setPhase({ kind: "done", id });
+      setPhase({ kind: "done", id, skipped, errors: sampleErrors });
       setPreview(null);
       router.refresh();
     } catch {
@@ -217,6 +219,15 @@ export function UploadCard() {
                 {busy ? "Ingesting…" : "Upload and score"}
               </Button>
             )}
+          </div>
+        )}
+
+        {phase.kind === "done" && phase.skipped > 0 && (
+          <div role="status" className="space-y-2 rounded-lg border border-signal-mid/40 bg-signal-mid-soft p-3 text-sm">
+            <p>{phase.skipped.toLocaleString()} row{phase.skipped === 1 ? " was" : "s were"} skipped. Correct these fields before uploading again:</p>
+            <ul className="list-inside list-disc text-xs">
+              {phase.errors.map((error, index) => <li key={index}>{error}</li>)}
+            </ul>
           </div>
         )}
 
