@@ -71,9 +71,11 @@ function detectBursts(leads: RawLead[]): Set<number> {
 
   for (const indices of byLandingPage.values()) {
     const sorted = [...indices].sort(
-      (a, b) => leads[a].createdAt.getTime() - leads[b].createdAt.getTime(),
+      (a, b) =>
+        leads[a].createdAt.getTime() - leads[b].createdAt.getTime() || a - b,
     );
     let lo = 0;
+    let markedThrough = -1;
     for (let hi = 0; hi < sorted.length; hi++) {
       while (
         leads[sorted[hi]].createdAt.getTime() -
@@ -83,7 +85,10 @@ function detectBursts(leads: RawLead[]): Set<number> {
         lo++;
       }
       if (hi - lo + 1 >= BURST.minLeads) {
-        for (let k = lo; k <= hi; k++) flagged.add(sorted[k]);
+        for (let k = Math.max(lo, markedThrough + 1); k <= hi; k++) {
+          flagged.add(sorted[k]);
+        }
+        markedThrough = hi;
       }
     }
   }
