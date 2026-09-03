@@ -22,13 +22,18 @@ export function SampleCard() {
     try {
       const res = await fetch("/api/datasets/sample", { method: "POST" });
       if (!res.ok) {
-        toast.error("Couldn't load the sample dataset.");
+        const { error } = await res
+          .json()
+          .catch(() => ({ error: "Couldn't load the sample dataset." }));
+        toast.error(error ?? "Couldn't load the sample dataset.");
         return;
       }
       const { id, rows } = (await res.json()) as { id: string; rows: number };
       toast.success(`Sample loaded — ${rows.toLocaleString()} leads scored.`);
       router.refresh();
       router.push(`/datasets/${id}/dashboard`);
+    } catch {
+      toast.error("Couldn't reach the server. Try loading the sample again.");
     } finally {
       setPending(false);
     }

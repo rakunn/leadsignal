@@ -21,3 +21,6 @@ export const CSV_COLUMNS = [
 export const REQUIRED_COLUMNS = ["created_at", "campaign"] as const;
 
 export const MAX_UPLOAD_BYTES = 32 * 1024 * 1024; // Cloud Run request limit
+export const MAX_REQUEST_BYTES = 34 * 1024 * 1024;
+export const MAX_UPLOAD_ROWS = 25_000;
+export const MAX_FIELD_CHARS = 4_096;

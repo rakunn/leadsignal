@@ -5,7 +5,11 @@ import { datasets, leads } from "@/db/schema";
 import { materializeRollups } from "@/db/rollups";
 import { SCORING_VERSION } from "@/lib/scoring/constants";
 import { scoreDataset } from "@/lib/scoring/persist";
-import { REQUIRED_COLUMNS } from "./columns";
+import {
+  MAX_FIELD_CHARS,
+  MAX_UPLOAD_ROWS,
+  REQUIRED_COLUMNS,
+} from "./columns";
 
 /** A lead row ready for insertion (raw fields only; scoring fills the rest). */
 export type LeadInsertRow = {
@@ -56,13 +60,54 @@ export interface ParsedCsv {
  * Throws CsvContractError when required headers are missing.
  */
 export function parseCsvLeads(csvText: string): ParsedCsv {
-  const parsed = Papa.parse<Record<string, string>>(csvText, {
+  const rawHeader = Papa.parse<string[]>(csvText, {
+    header: false,
+    preview: 1,
+    skipEmptyLines: true,
+  });
+  const rawHeaders = rawHeader.data[0] ?? [];
+  if (rawHeaders.some((header) => header.length > MAX_FIELD_CHARS)) {
+    throw new CsvContractError(
+      `Header contains a field longer than ${MAX_FIELD_CHARS.toLocaleString()} characters.`,
+    );
+  }
+
+  const inputRows: Record<string, string>[] = [];
+  let headers: string[] = [];
+  let contractError: CsvContractError | null = null;
+
+  Papa.parse<Record<string, string>>(csvText, {
     header: true,
     skipEmptyLines: true,
     transformHeader: (h) => h.trim().toLowerCase(),
+    transform: (value) => {
+      if (!contractError && value.length > MAX_FIELD_CHARS) {
+        contractError = new CsvContractError(
+          `Record ${inputRows.length + 1} contains a field longer than ${MAX_FIELD_CHARS.toLocaleString()} characters.`,
+        );
+      }
+      return value;
+    },
+    step: (result, parser) => {
+      headers = result.meta.fields ?? headers;
+      const record = inputRows.length + 1;
+      if (contractError) {
+        parser.abort();
+        return;
+      }
+      if (record > MAX_UPLOAD_ROWS) {
+        contractError = new CsvContractError(
+          `Record ${record} exceeds the ${MAX_UPLOAD_ROWS.toLocaleString()}-row limit.`,
+        );
+        parser.abort();
+        return;
+      }
+
+      inputRows.push(result.data);
+    },
   });
 
-  const headers = parsed.meta.fields ?? [];
+  if (contractError) throw contractError;
   const missing = REQUIRED_COLUMNS.filter((c) => !headers.includes(c));
   if (missing.length > 0) {
     throw new CsvContractError(
@@ -74,7 +119,7 @@ export function parseCsvLeads(csvText: string): ParsedCsv {
   const sampleErrors: string[] = [];
   let skipped = 0;
 
-  parsed.data.forEach((r, i) => {
+  inputRows.forEach((r, i) => {
     const campaign = r.campaign?.trim();
     const createdAt = new Date(r.created_at ?? "");
     if (!campaign || Number.isNaN(createdAt.getTime())) {
