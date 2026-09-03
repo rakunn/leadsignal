@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { scoreLeads } from "@/lib/scoring/score";
+import { buildValueNorms } from "@/lib/scoring/value";
 import {
   isHighQuality,
   qualifiedCplCents,
@@ -259,6 +260,24 @@ describe("value sub-score", () => {
     expect(richScore).toBeGreaterThan(60);
     expect(poorScore).toBeLessThan(40);
     expect(scored[10].riskFlags).toContain("low_value_source");
+  });
+
+  test("uses ceiling percentile ranks across empty, tied, and in-between source values", () => {
+    expect(buildValueNorms([]).percentileOf(500)).toBe(50);
+    expect(buildValueNorms([lead({ revenueCents: 100 })]).percentileOf(999)).toBe(50);
+
+    const norms = buildValueNorms([
+      lead({ campaign: "Low", landingPage: null, revenueCents: 100 }),
+      lead({ campaign: "Tied", landingPage: null, revenueCents: 200 }),
+      lead({ campaign: "Tied", landingPage: null, revenueCents: 200 }),
+      lead({ campaign: "High", landingPage: null, revenueCents: 300 }),
+    ]);
+
+    expect(norms.percentileOf(100)).toBe(0);
+    expect(norms.percentileOf(200)).toBe(50);
+    expect(norms.percentileOf(250)).toBe(100);
+    expect(norms.percentileOf(300)).toBe(100);
+    expect(norms.percentileOf(999)).toBe(100);
   });
 });
 

@@ -57,8 +57,14 @@ export function buildValueNorms(leads: RawLead[]): ValueNorms {
     if (distinct.length <= 1) return 50;
     // Distinct-value tier rank: where does this source sit among the
     // dataset's distinct blended source values?
-    let idx = distinct.findIndex((v) => v >= sourceValue);
-    if (idx === -1) idx = distinct.length - 1;
+    let lo = 0;
+    let hi = distinct.length;
+    while (lo < hi) {
+      const mid = lo + Math.floor((hi - lo) / 2);
+      if (distinct[mid] < sourceValue) lo = mid + 1;
+      else hi = mid;
+    }
+    const idx = Math.min(lo, distinct.length - 1);
     return Math.round((idx / (distinct.length - 1)) * 100);
   }
 
