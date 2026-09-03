@@ -23,26 +23,32 @@ env:
   MIGRATE_IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/leadsignal/migrate:${{ github.sha }}
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test # includes the demo-story guardrail
+  checks:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
 
   deploy:
-    needs: test
+    needs: checks
+    if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write # Workload Identity Federation — no key JSON anywhere
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify deployment configuration
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          CLOUD_SQL_INSTANCE: ${{ vars.CLOUD_SQL_INSTANCE }}
+        run: |
+          for name in GCP_PROJECT_ID GCP_REGION GCP_WIF_PROVIDER GCP_SERVICE_ACCOUNT CLOUD_SQL_INSTANCE; do
+            if [ -z "${!name}" ]; then echo "::error::Missing deployment variable $name"; exit 1; fi
+          done
 
       - uses: google-github-actions/auth@v2
         with:

@@ -1,0 +1,84 @@
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://test:test-only@127.0.0.1:5432/postgres
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:db
+      - run: npm run build
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Build without pushing. Covers both runtime assets and the migration image.
+      - run: docker build --target runner -t leadsignal-test .
+      - run: docker build --target migrate -t leadsignal-migrate-test .
+      - name: Serve standalone login and static assets
+        run: |
+          docker run -d --name leadsignal-test -p 127.0.0.1:8080:8080 \
+            -e APP_PASSWORD=ci-only -e AUTH_COOKIE_SECRET=ci-only-cookie-secret leadsignal-test
+          trap 'docker rm -f leadsignal-test' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/login -o /tmp/login.html; then break; fi
+            sleep 1
+          done
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          const html = readFileSync('/tmp/login.html', 'utf8');
+          const assets = [...new Set([...html.matchAll(/(?:src|href)="([^\"]*\/_next\/static\/[^\"]+)"/g)].map(m => m[1]))];
+          if (!html.includes('LeadSignal') || !assets.length) throw new Error('Standalone page or assets missing');
+          for (const asset of assets) {
+            const response = await fetch(new URL(asset.replaceAll('&amp;', '&'), 'http://127.0.0.1:8080'));
+            if (!response.ok) throw new Error(`Static asset failed: ${response.status}`);
+          }
+          // No database is needed: oversized requests must fail before ingestion.
+          const login = await fetch('http://127.0.0.1:8080/api/auth/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: 'ci-only' }),
+          });
+          if (!login.ok) throw new Error('Container login failed');
+          const cookie = login.headers.get('set-cookie')?.split(';')[0];
+          if (!cookie) throw new Error('Container session missing');
+          async function* oversizedBody() {
+            for (let i = 0; i < 36; i++) yield Buffer.alloc(1024 * 1024, 120);
+          }
+          const oversized = await fetch('http://127.0.0.1:8080/api/datasets', {
+            method: 'POST', headers: { cookie, 'Content-Type': 'multipart/form-data; boundary=oversized' },
+            body: oversizedBody(), duplex: 'half', signal: AbortSignal.timeout(30000),
+          });
+          if (oversized.status !== 413) throw new Error(`Chunked upload limit failed: ${oversized.status}`);
+          JS
