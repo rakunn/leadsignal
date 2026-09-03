@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
-import { AUTH_COOKIE, expectedAuthCookie, isPasswordValid } from "@/lib/auth";
-
-const THIRTY_DAYS_S = 60 * 60 * 24 * 30;
+import {
+  AUTH_COOKIE,
+  AUTH_TTL_SECONDS,
+  createAuthCookie,
+  isPasswordValid,
+} from "@/lib/auth";
 
 export async function POST(request: Request) {
   let password: unknown;
@@ -16,12 +19,12 @@ export async function POST(request: Request) {
   }
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(AUTH_COOKIE, expectedAuthCookie(), {
+  res.cookies.set(AUTH_COOKIE, createAuthCookie(), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: THIRTY_DAYS_S,
+    maxAge: AUTH_TTL_SECONDS,
   });
   return res;
 }

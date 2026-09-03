@@ -47,6 +47,11 @@ printf 'choose-a-demo-password' | gcloud secrets create leadsignal-app-password 
 openssl rand -hex 32 | tr -d '\n' | gcloud secrets create leadsignal-cookie-secret --data-file=-
 ```
 
+Visitors must sign in again after this session change is deployed. Sessions last
+30 days and are invalidated immediately when either `APP_PASSWORD` or
+`AUTH_COOKIE_SECRET` changes. Rotate either secret to revoke all current
+sessions.
+
 ## 4. Deployer service account + Workload Identity Federation
 
 ```bash
