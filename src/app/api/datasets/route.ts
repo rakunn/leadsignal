@@ -102,7 +102,12 @@ export async function POST(request: Request) {
     // open. The client polls /status for progress in parallel.
     await runIngest(dataset.id, parsed);
 
-    return NextResponse.json({ id: dataset.id, rows: parsed.rows.length });
+    return NextResponse.json({
+      id: dataset.id,
+      rows: parsed.rows.length,
+      skipped: parsed.skipped,
+      sampleErrors: parsed.sampleErrors,
+    });
   } finally {
     release();
   }
