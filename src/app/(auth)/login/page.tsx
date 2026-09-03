@@ -19,24 +19,29 @@ function LoginForm() {
     e.preventDefault();
     setPending(true);
     setError(null);
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
-    if (res.ok) {
-      router.replace(
-        safeLoginDestination(searchParams.get("next"), window.location.origin),
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      if (res.ok) {
+        router.replace(
+          safeLoginDestination(searchParams.get("next"), window.location.origin),
+        );
+        router.refresh();
+        return;
+      }
+      setError(
+        res.status === 401
+          ? "That password didn't match. Try again."
+          : "Something went wrong. Try again.",
       );
-      router.refresh();
-      return;
+    } catch {
+      setError("Couldn't reach the server. Check your connection and try again.");
+    } finally {
+      setPending(false);
     }
-    setPending(false);
-    setError(
-      res.status === 401
-        ? "That password didn't match. Try again."
-        : "Something went wrong. Try again.",
-    );
   }
 
   return (
