@@ -191,7 +191,7 @@ export function AnalystChat({ datasetId }: { datasetId: string }) {
           <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
             <p className="max-w-sm text-sm text-muted-foreground">
               Ask about campaign quality, budget moves, or why a metric changed.
-              Every number comes from your scored data — nothing is invented.
+              Metrics come from scored data. Review generated explanations and estimates.
             </p>
             <div className="flex flex-col gap-2">
               {STARTERS.map((q) => (
