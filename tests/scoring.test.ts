@@ -139,6 +139,76 @@ describe("burst detection", () => {
       expect(s.riskFlags).not.toContain("burst_submission");
     }
   });
+
+  test("matches the brute-force window oracle across overlapping boundaries and landing pages", () => {
+    const at = (milliseconds: number) =>
+      new Date(Date.parse("2026-06-01T12:00:00Z") + milliseconds);
+    const fixture: Array<{ landingPage: string; milliseconds: number }> = [
+      // Five rows at the exact inclusive 120-second boundary, then an
+      // overlapping qualifying window. All six must be marked.
+      { landingPage: "lp-overlap", milliseconds: 0 },
+      { landingPage: "lp-overlap", milliseconds: 30_000 },
+      { landingPage: "lp-overlap", milliseconds: 60_000 },
+      { landingPage: "lp-overlap", milliseconds: 90_000 },
+      { landingPage: "lp-overlap", milliseconds: 120_000 },
+      { landingPage: "lp-overlap", milliseconds: 150_000 },
+      // A one-millisecond gap beyond the boundary leaves this group short.
+      { landingPage: "lp-gap", milliseconds: 0 },
+      { landingPage: "lp-gap", milliseconds: 30_000 },
+      { landingPage: "lp-gap", milliseconds: 60_000 },
+      { landingPage: "lp-gap", milliseconds: 90_000 },
+      { landingPage: "lp-gap", milliseconds: 120_001 },
+      // Timestamp ties qualify independently of the other landing pages.
+      { landingPage: "lp-ties", milliseconds: 10_000 },
+      { landingPage: "lp-ties", milliseconds: 10_000 },
+      { landingPage: "lp-ties", milliseconds: 10_000 },
+      { landingPage: "lp-ties", milliseconds: 10_000 },
+      { landingPage: "lp-ties", milliseconds: 10_000 },
+      // A fourth landing page with fewer rows cannot borrow a window.
+      { landingPage: "lp-separate", milliseconds: 0 },
+      { landingPage: "lp-separate", milliseconds: 20_000 },
+      { landingPage: "lp-separate", milliseconds: 40_000 },
+      { landingPage: "lp-separate", milliseconds: 60_000 },
+    ];
+    const rows = fixture.map(({ landingPage, milliseconds }, i) =>
+      lead({
+        landingPage,
+        createdAt: at(milliseconds),
+        email: `burst${i}@example.com`,
+        phone: `+1415555${String(6000 + i)}`,
+      }),
+    );
+
+    const expected = new Set<number>();
+    for (const landingPage of new Set(rows.map((row) => row.landingPage))) {
+      const indices = rows
+        .map((row, i) => ({ row, i }))
+        .filter(({ row }) => row.landingPage === landingPage)
+        .sort(
+          (a, b) =>
+            a.row.createdAt.getTime() - b.row.createdAt.getTime() || a.i - b.i,
+        )
+        .map(({ i }) => i);
+      for (let start = 0; start < indices.length; start++) {
+        for (let end = start + 4; end < indices.length; end++) {
+          if (
+            rows[indices[end]].createdAt.getTime() -
+              rows[indices[start]].createdAt.getTime() <=
+            120_000
+          ) {
+            for (let marked = start; marked <= end; marked++) {
+              expected.add(indices[marked]);
+            }
+          }
+        }
+      }
+    }
+
+    const actual = scoreLeads(rows)
+      .map((score, i) => (score.riskFlags.includes("burst_submission") ? i : -1))
+      .filter((i) => i >= 0);
+    expect(actual).toEqual([...expected].sort((a, b) => a - b));
+  });
 });
 
 describe("intent sub-score", () => {
