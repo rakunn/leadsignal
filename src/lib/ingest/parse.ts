@@ -49,6 +49,20 @@ function toNullable(v: string | undefined): string | null {
   return s ? s : null;
 }
 
+function normalizedHeader(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function csvStructureError(
+  error: Papa.ParseError,
+  fallbackRecord: number,
+): CsvContractError {
+  const record = (error.row ?? fallbackRecord) + 2;
+  return new CsvContractError(
+    `CSV structure error at record ${record}: ${error.code}.`,
+  );
+}
+
 export interface ParsedCsv {
   rows: LeadInsertRow[];
   skipped: number;
@@ -65,10 +79,20 @@ export function parseCsvLeads(csvText: string): ParsedCsv {
     preview: 1,
     skipEmptyLines: true,
   });
+  if (rawHeader.errors.length > 0) {
+    throw csvStructureError(rawHeader.errors[0], 0);
+  }
+
   const rawHeaders = rawHeader.data[0] ?? [];
   if (rawHeaders.some((header) => header.length > MAX_FIELD_CHARS)) {
     throw new CsvContractError(
-      `Header contains a field longer than ${MAX_FIELD_CHARS.toLocaleString()} characters.`,
+      `CSV structure error at record 1: header contains a field longer than ${MAX_FIELD_CHARS.toLocaleString()} characters.`,
+    );
+  }
+  const normalizedHeaders = rawHeaders.map(normalizedHeader);
+  if (new Set(normalizedHeaders).size !== normalizedHeaders.length) {
+    throw new CsvContractError(
+      "CSV structure error at record 1: duplicate column headers.",
     );
   }
 
@@ -79,7 +103,7 @@ export function parseCsvLeads(csvText: string): ParsedCsv {
   Papa.parse<Record<string, string>>(csvText, {
     header: true,
     skipEmptyLines: true,
-    transformHeader: (h) => h.trim().toLowerCase(),
+    transformHeader: normalizedHeader,
     transform: (value) => {
       if (!contractError && value.length > MAX_FIELD_CHARS) {
         contractError = new CsvContractError(
@@ -92,6 +116,11 @@ export function parseCsvLeads(csvText: string): ParsedCsv {
       headers = result.meta.fields ?? headers;
       const record = inputRows.length + 1;
       if (contractError) {
+        parser.abort();
+        return;
+      }
+      if (result.errors.length > 0) {
+        contractError = csvStructureError(result.errors[0], record - 1);
         parser.abort();
         return;
       }
