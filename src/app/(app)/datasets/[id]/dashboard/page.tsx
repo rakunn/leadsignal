@@ -1,6 +1,6 @@
 import { and, asc, eq, min, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { leads, rollupDimension, rollups } from "@/db/schema";
+import { datasets, leads, rollupDimension, rollups } from "@/db/schema";
 import { CplInversionChart } from "@/components/charts/cpl-inversion-chart";
 import { QualityTrendChart } from "@/components/charts/quality-trend-chart";
 import { SegmentMix } from "@/components/charts/segment-mix";
@@ -55,7 +55,7 @@ export default async function DashboardPage({
     landing_page: leads.landingPage,
   }[dim];
 
-  const [byValue, daily, segmentRows, creatives, landingPages, [v4]] =
+  const [byValue, daily, segmentRows, creatives, landingPages, [v4], campaignTotals, [dataset]] =
     await Promise.all([
       totalsBy(id, dim),
       db
@@ -89,17 +89,19 @@ export default async function DashboardPage({
             eq(rollups.dimensionValue, "lp-search-v4"),
           ),
         ),
+      dim === "campaign" ? Promise.resolve(null) : totalsBy(id, "campaign"),
+      db.select({ status: datasets.status }).from(datasets).where(eq(datasets.id, id)).limit(1),
     ]);
 
-  if (byValue.length === 0) {
-    return (
-      <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        No rollups yet — the dataset may still be processing.
-      </div>
-    );
-  }
-
-  const overall = deriveMetrics(sumTotals(byValue));
+  const datasetTotals = sumTotals(campaignTotals ?? byValue);
+  const overall = deriveMetrics(datasetTotals);
+  const missingDimensionRows = datasetTotals.leadCount - sumTotals(byValue).leadCount;
+  const dimensionLabel = { campaign: "campaign", ad_set: "ad set", creative: "creative", platform: "platform", landing_page: "landing page" }[dim];
+  const emptyMessage = dataset?.status === "error"
+    ? "Dataset processing failed. Return to datasets to review the error."
+    : dataset?.status === "processing" || dataset?.status === "scoring"
+      ? "This dataset is still processing."
+      : `No ${dimensionLabel} values in this dataset.`;
 
   // Top values by spend get chart slots; stable colors by sorted name.
   const topValues = [...byValue]
@@ -175,13 +177,13 @@ export default async function DashboardPage({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
           label="Spend"
-          value={fmtUsdFromCents(sumTotals(byValue).spendCents)}
-          sub={`${fmtInt(sumTotals(byValue).leadCount)} leads ingested`}
+          value={fmtUsdFromCents(datasetTotals.spendCents)}
+          sub={`${fmtInt(datasetTotals.leadCount)} leads ingested`}
         />
         <StatTile
           label="High-quality rate"
           value={fmtPct(overall.hqRate, 1)}
-          sub={`${fmtInt(sumTotals(byValue).hqLeadCount)} leads worth pursuing`}
+          sub={`${fmtInt(datasetTotals.hqLeadCount)} leads worth pursuing`}
           tone={overall.hqRate >= 0.35 ? "high" : overall.hqRate < 0.2 ? "low" : "mid"}
         />
         <StatTile
@@ -204,6 +206,16 @@ export default async function DashboardPage({
         />
       </div>
 
+      {missingDimensionRows > 0 && byValue.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {fmtInt(missingDimensionRows)} lead{missingDimensionRows === 1 ? "" : "s"} without {dimensionLabel} values are omitted from these charts. Headline totals include all leads.
+        </p>
+      )}
+      {byValue.length === 0 ? (
+        <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+          {emptyMessage}
+        </div>
+      ) : <>
       <Card>
         <CardHeader>
           <CardTitle className="font-heading">
@@ -264,6 +276,7 @@ export default async function DashboardPage({
           emptyNote="Needs ≥ 30 leads per landing page."
         />
       </div>
+      </>}
     </div>
   );
 }
