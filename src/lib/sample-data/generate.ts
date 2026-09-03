@@ -3,6 +3,7 @@ import { CAMPAIGNS, DAYS, type CampaignConfig } from "./config";
 
 export const SAMPLE_SEED = 20260702;
 export const SAMPLE_DATASET_NAME = "Sample media buys — last 30 days";
+const CANONICAL_ANCHOR = new Date("2026-06-30T00:00:00Z");
 
 /** Anchor for app usage: midnight UTC today, so the window is the last 30 full days. */
 export function defaultAnchor(now = new Date()): Date {
@@ -89,6 +90,18 @@ export function generateSampleLeads(
   seed: number,
   anchor: Date,
 ): LeadInsertRow[] {
+  const offsetMs = anchor.getTime() - CANONICAL_ANCHOR.getTime();
+  return generateCanonicalScenario(seed).map((row) => ({
+    ...row,
+    createdAt: new Date(row.createdAt.getTime() + offsetMs),
+  }));
+}
+
+/**
+ * Generate the canonical business scenario independent of the requested
+ * presentation date. Callers receive timestamp-shifted copies above.
+ */
+function generateCanonicalScenario(seed: number): LeadInsertRow[] {
   const state: GenState = {
     rng: mulberry32(seed),
     emailCounter: 0,
@@ -96,7 +109,7 @@ export function generateSampleLeads(
     externalCounter: 0,
   };
   const { rng } = state;
-  const windowStart = anchor.getTime() - DAYS * 86_400_000;
+  const windowStart = CANONICAL_ANCHOR.getTime() - DAYS * 86_400_000;
   const rows: LeadInsertRow[] = [];
 
   for (const config of Object.values(CAMPAIGNS)) {

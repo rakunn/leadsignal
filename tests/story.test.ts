@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { generateSampleLeads, SAMPLE_SEED } from "@/lib/sample-data/generate";
-import { CAMPAIGNS } from "@/lib/sample-data/config";
+import { CAMPAIGNS, DAYS } from "@/lib/sample-data/config";
 import { isHighQuality } from "@/lib/scoring/constants";
 import { scoreLeads } from "@/lib/scoring/score";
 import type { RawLead } from "@/lib/scoring/types";
@@ -119,4 +119,61 @@ describe("demo story", () => {
     ).length;
     expect(burstCount).toBeGreaterThanOrEqual(30);
   });
+
+  test("keeps scoring outcomes stable for every weekday and calendar transition", () => {
+    function signature(anchor: Date) {
+      const sample = generateSampleLeads(SAMPLE_SEED, anchor);
+      const { scores, byCampaign } = aggregate(sample);
+      const start = anchor.getTime() - DAYS * 86_400_000;
+      let preHq = 0;
+      let preLeads = 0;
+      let postHq = 0;
+      let postLeads = 0;
+      sample.forEach((row, i) => {
+        if (row.campaign !== CAMPAIGNS.search.name) return;
+        const day = Math.floor((row.createdAt.getTime() - start) / 86_400_000);
+        const hq = isHighQuality(scores[i].compositeScore, scores[i].segment);
+        if (day < 17) {
+          preLeads++;
+          if (hq) preHq++;
+        } else if (day >= 18) {
+          postLeads++;
+          if (hq) postHq++;
+        }
+      });
+
+      return {
+        campaignTotals: [...byCampaign.entries()],
+        duplicateIndexes: scores.flatMap((score, i) =>
+          score.isDuplicate ? [i] : [],
+        ),
+        burstIndexes: scores.flatMap((score, i) =>
+          score.riskFlags.includes("burst_submission") ? [i] : [],
+        ),
+        searchQualityDrop: preHq / preLeads - postHq / postLeads,
+      };
+    }
+
+    const expected = signature(ANCHOR);
+    const weekdays = Array.from(
+      { length: 7 },
+      (_, day) => new Date(Date.parse("2026-09-06T00:00:00Z") + day * 86_400_000),
+    );
+    const transitions = [
+      new Date("2026-07-01T00:00:00Z"),
+      new Date("2027-01-01T00:00:00Z"),
+      new Date("2028-02-29T00:00:00Z"),
+    ];
+
+    for (const anchor of [...weekdays, ...transitions]) {
+      const sample = generateSampleLeads(SAMPLE_SEED, anchor);
+      expect(sample).toHaveLength(rows.length);
+      const end = anchor.getTime();
+      expect(sample.every((row) => {
+        const time = row.createdAt.getTime();
+        return time >= end - DAYS * 86_400_000 && time <= end;
+      })).toBe(true);
+      expect(signature(anchor)).toEqual(expected);
+    }
+  }, 30_000);
 });
