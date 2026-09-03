@@ -242,7 +242,7 @@ export function AnalystChat({ datasetId }: { datasetId: string }) {
                       </div>
                     );
                   case "card":
-                    return <RecommendationCardView key={j} action={part.action} />;
+                    return <RecommendationCardView key={j} action={part.action} onResolved={() => router.refresh()} />;
                 }
               })}
               {streaming && i === messages.length - 1 && msg.parts.length === 0 && (
