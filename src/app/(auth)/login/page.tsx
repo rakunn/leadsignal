@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { safeLoginDestination } from "@/lib/auth-redirect";
 import { Wordmark } from "@/components/wordmark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,9 @@ function LoginForm() {
       body: JSON.stringify({ password }),
     });
     if (res.ok) {
-      router.replace(searchParams.get("next") ?? "/datasets");
+      router.replace(
+        safeLoginDestination(searchParams.get("next"), window.location.origin),
+      );
       router.refresh();
       return;
     }
