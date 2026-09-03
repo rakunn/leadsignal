@@ -105,6 +105,66 @@ describe("duplicate detection", () => {
     expect(a.duplicateOfIndex).toBe(1);
     expect(b.isDuplicate).toBe(false);
   });
+
+  test("retains aliases learned from duplicate rows for later duplicate detection", () => {
+    const rows = [
+      lead({ email: "a@example.com", phone: "+14155550001" }),
+      lead({ email: "a@example.com", phone: "+14155550002" }),
+      lead({ email: "b@example.com", phone: "+14155550002" }),
+    ];
+    const scores = scoreLeads(rows);
+
+    expect(scores.map((score) => score.isDuplicate)).toEqual([false, true, true]);
+    expect(scores[2].duplicateOfIndex).toBe(0);
+    expect(scores[2].compositeScore).toBeLessThanOrEqual(15);
+  });
+
+  test("retains a duplicate's email alias after its phone matched first", () => {
+    const scores = scoreLeads([
+      lead({ email: "a@example.com", phone: "+14155550001" }),
+      lead({ email: "b@example.com", phone: "+14155550001" }),
+      lead({ email: "b@example.com", phone: "+14155550002" }),
+    ]);
+
+    expect(scores.map((score) => score.duplicateOfIndex)).toEqual([null, 0, 0]);
+  });
+
+  test("uses original-index tie order and never merges conflicting representatives", () => {
+    const at = new Date("2026-06-01T12:00:00Z");
+    const scores = scoreLeads([
+      lead({
+        email: "alpha@example.com",
+        phone: "+14155550001",
+        createdAt: at,
+      }),
+      lead({
+        email: "bravo@example.com",
+        phone: "+14155550002",
+        createdAt: at,
+      }),
+      lead({
+        email: "alpha@example.com",
+        phone: "+14155550002",
+        createdAt: new Date(at.getTime() + 1),
+      }),
+      lead({
+        email: "charlie@example.com",
+        phone: "+14155550002",
+        createdAt: new Date(at.getTime() + 2),
+      }),
+    ]);
+
+    expect(scores.map((score) => score.duplicateOfIndex)).toEqual([null, null, 0, 1]);
+  });
+
+  test("does not treat invalid identifier text as a duplicate alias", () => {
+    const scores = scoreLeads([
+      lead({ email: "not an email", phone: "invalid" }),
+      lead({ email: "not an email", phone: "invalid" }),
+    ]);
+
+    expect(scores.map((score) => score.isDuplicate)).toEqual([false, false]);
+  });
 });
 
 describe("burst detection", () => {
