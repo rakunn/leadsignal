@@ -69,7 +69,7 @@ docker compose up -d                # Postgres 16
 cp .env.example .env.local          # set APP_PASSWORD, AUTH_COOKIE_SECRET,
                                     # ANTHROPIC_API_KEY (analyst + explanations)
 npm install
-DATABASE_URL=postgresql://leadsignal:leadsignal@localhost:5432/leadsignal \
+DATABASE_URL=postgresql://leadsignal:leadsignal@127.0.0.1:5432/leadsignal \
   npx drizzle-kit migrate
 npm run dev                         # http://localhost:3000
 ```
