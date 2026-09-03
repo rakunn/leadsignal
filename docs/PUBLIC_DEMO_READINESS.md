@@ -5,6 +5,9 @@ Verified on 2026-09-03 against Node 22 and Postgres 16. The approved
 20 focused commits on `rafal/public-demo-readiness`, based on `4910d35`.
 The existing analyst work in that baseline is preserved.
 
+**License follow-up (2026-09-03):** The owner selected the [MIT License](../LICENSE),
+added in a separate commit after the 20 implementation commits.
+
 ## Delivered changes
 
 | Commit | Requirement | Result |
@@ -39,7 +42,7 @@ because its default would truncate otherwise supported uploads.
 To list the original handoff commits in order:
 
 ```sh
-git log --reverse --oneline 4910d35..rafal/public-demo-readiness
+git log --reverse --oneline 4910d35..3d9bb55
 ```
 
 ## Verification completed
@@ -120,7 +123,6 @@ boundary tests verify score semantics separately. Malformed-email probes at
 
 ## Publication decisions still required
 
-- Choose the repository's intended license. No license has been assumed.
 - Complete a separate history-aware secret review before changing visibility;
   current tracked-file checks do not certify Git history.
 - Keep live access controlled until login throttling, provider spend and

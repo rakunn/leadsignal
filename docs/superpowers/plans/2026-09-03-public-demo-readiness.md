@@ -467,7 +467,7 @@ Retain the existing deployment steps below this boundary and fail with a clear m
 
 ## Decisions outside the 20 technical commits
 
-- **License:** owner must select intended reuse terms before a `docs: add repository license` commit is concrete. Do not invent a license. The rest of the plan can proceed independently.
+- **License — resolved 2026-09-03:** the owner selected MIT after completion of the 20 technical commits. The [license](../../../LICENSE) is added in a separate documentation commit.
 - **Broad live-demo access:** login throttling, provider spend/concurrency quotas, stream cancellation, and bounded conversation history need a separate deployment-policy scope. This plan does not claim those protections exist. Keep live access controlled until the hosting policy is defined.
 - **Historical secrets:** the prior scan covered current tracked-file patterns. Before changing repository visibility, perform a separate history-aware secret check without printing values, and handle any confirmed historical exposure explicitly.
 
