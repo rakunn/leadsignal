@@ -6,6 +6,7 @@ import { LeadsFilters } from "@/components/leads-filters";
 import { LeadsTable, type LeadRowData } from "@/components/leads-table";
 import { Button } from "@/components/ui/button";
 import { fmtInt } from "@/lib/format";
+import { normalizePage } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,6 @@ export default async function LeadsPage({
   const campaign = typeof sp.campaign === "string" ? sp.campaign : undefined;
   const flag = typeof sp.flag === "string" ? sp.flag : undefined;
   const sort = typeof sp.sort === "string" ? sp.sort : "score_asc";
-  const page = Math.max(1, Number.parseInt(String(sp.page ?? "1"), 10) || 1);
 
   const conditions: SQL[] = [eq(leads.datasetId, id)];
   if (segment && SEGMENTS.has(segment)) {
@@ -54,21 +54,15 @@ export default async function LeadsPage({
           ? [desc(leads.compositeScore), asc(leads.id)]
           : [asc(leads.compositeScore), asc(leads.id)];
 
-  const [rows, [{ count }], campaignRows] = await Promise.all([
-    db
-      .select()
-      .from(leads)
-      .where(where)
-      .orderBy(...orderBy)
-      .limit(PAGE_SIZE)
-      .offset((page - 1) * PAGE_SIZE),
+  const [[{ count }], campaignRows] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` }).from(leads).where(where),
-    db
-      .selectDistinct({ campaign: leads.campaign })
-      .from(leads)
-      .where(eq(leads.datasetId, id))
-      .orderBy(asc(leads.campaign)),
+    db.selectDistinct({ campaign: leads.campaign }).from(leads)
+      .where(eq(leads.datasetId, id)).orderBy(asc(leads.campaign)),
   ]);
+  const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
+  const page = normalizePage(sp.page, totalPages);
+  const rows = await db.select().from(leads).where(where)
+    .orderBy(...orderBy).limit(PAGE_SIZE).offset((page - 1) * PAGE_SIZE);
 
   const data: LeadRowData[] = rows.map((l) => ({
     id: l.id,
@@ -97,7 +91,6 @@ export default async function LeadsPage({
     explanation: l.explanation,
   }));
 
-  const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
   const pageHref = (p: number) => {
     const params = new URLSearchParams();
     if (segment) params.set("segment", segment);
@@ -128,24 +121,23 @@ export default async function LeadsPage({
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <Button variant="outline" size="sm" asChild disabled={page <= 1}>
-            <Link href={pageHref(page - 1)} aria-disabled={page <= 1}>
-              Previous
-            </Link>
-          </Button>
+          {page <= 1 ? (
+            <Button variant="outline" size="sm" disabled>Previous</Button>
+          ) : (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={pageHref(page - 1)}>Previous</Link>
+            </Button>
+          )}
           <span className="text-sm text-muted-foreground">
             Page {page} of {totalPages}
           </span>
-          <Button
-            variant="outline"
-            size="sm"
-            asChild
-            disabled={page >= totalPages}
-          >
-            <Link href={pageHref(page + 1)} aria-disabled={page >= totalPages}>
-              Next
-            </Link>
-          </Button>
+          {page >= totalPages ? (
+            <Button variant="outline" size="sm" disabled>Next</Button>
+          ) : (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={pageHref(page + 1)}>Next</Link>
+            </Button>
+          )}
         </div>
       )}
     </div>
