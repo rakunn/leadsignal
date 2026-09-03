@@ -38,20 +38,29 @@ function detectDuplicates(leads: RawLead[]): DuplicateInfo[] {
 
   const byEmail = new Map<string, number>();
   const byPhone = new Map<string, number>();
+  const chronologicalRank = new Map(order.map((index, rank) => [index, rank]));
 
   for (const i of order) {
     const email = canonicalEmail(leads[i].email);
     const phone = canonicalPhone(leads[i].phone);
     const emailHit = email !== undefined && email !== null ? byEmail.get(email) : undefined;
     const phoneHit = phone ? byPhone.get(phone) : undefined;
-    const original = emailHit ?? phoneHit;
+    const candidates = [emailHit, phoneHit].filter(
+      (index): index is number => index !== undefined,
+    );
+    const representative = candidates.reduce(
+      (earliest, candidate) =>
+        chronologicalRank.get(candidate)! < chronologicalRank.get(earliest)!
+          ? candidate
+          : earliest,
+      i,
+    );
 
-    if (original !== undefined) {
-      result[i] = { isDuplicate: true, duplicateOfIndex: original };
-      continue;
+    if (candidates.length > 0) {
+      result[i] = { isDuplicate: true, duplicateOfIndex: representative };
     }
-    if (email) byEmail.set(email, i);
-    if (phone) byPhone.set(phone, i);
+    if (email && !byEmail.has(email)) byEmail.set(email, representative);
+    if (phone && !byPhone.has(phone)) byPhone.set(phone, representative);
   }
 
   return result;
