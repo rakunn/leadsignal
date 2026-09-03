@@ -161,6 +161,6 @@ describe("ingest request limits", () => {
       parseCsvLeads(
         `created_at,campaign,${"x".repeat(4_097)}\n2026-06-01T00:00:00Z,Spring,ok`,
       ),
-    ).toThrow(CsvContractError);
+    ).toThrow(/record 1/i);
   });
 });

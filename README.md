@@ -98,7 +98,10 @@ landing_page, cost, email_opened, email_clicked, sms_clicked, converted, revenue
 ```
 
 Only `created_at` and `campaign` are strictly required; everything else
-degrades gracefully (and lowers the validity score, as it should).
+degrades gracefully (and lowers the validity score, as it should). Every row
+must still have the same number of fields as the header: quote values that
+contain commas, line breaks, or quotes, and do not repeat a header name after
+trimming and lowercasing.
 
 Uploads accept CSV files up to 32 MiB, with a 34 MiB request-body limit,
 25,000 data records, and fields up to 4,096 characters. The demo processes one
