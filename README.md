@@ -99,3 +99,8 @@ landing_page, cost, email_opened, email_clicked, sms_clicked, converted, revenue
 
 Only `created_at` and `campaign` are strictly required; everything else
 degrades gracefully (and lowers the validity score, as it should).
+
+Uploads accept CSV files up to 32 MiB, with a 34 MiB request-body limit,
+25,000 data records, and fields up to 4,096 characters. The demo processes one
+upload or sample dataset at a time per server process; a busy response can be
+retried after a few seconds.

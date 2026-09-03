@@ -15,7 +15,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { CSV_COLUMNS, REQUIRED_COLUMNS } from "@/lib/ingest/columns";
+import {
+  CSV_COLUMNS,
+  MAX_UPLOAD_BYTES,
+  REQUIRED_COLUMNS,
+} from "@/lib/ingest/columns";
 import { cn } from "@/lib/utils";
 
 type Preview = {
@@ -39,6 +43,10 @@ export function UploadCard() {
   const inspect = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith(".csv")) {
       toast.error("That doesn't look like a CSV file.");
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error("Files must be 32 MB or smaller.");
       return;
     }
     Papa.parse(file, {
