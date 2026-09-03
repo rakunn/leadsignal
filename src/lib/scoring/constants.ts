@@ -6,7 +6,7 @@ import type { LeadSegment } from "./types";
  * all import from here — change weights here and the story test will tell you
  * if the demo narrative broke.
  */
-export const SCORING_VERSION = "2026-09-v2";
+export const SCORING_VERSION = "2026-09-v3";
 
 export const WEIGHTS = {
   validity: 0.4,
