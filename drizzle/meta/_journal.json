@@ -15,6 +15,13 @@
       "when": 1782950213319,
       "tag": "0001_rollup-hq-revenue",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788394900594,
+      "tag": "0002_backfill-hq-revenue",
+      "breakpoints": true
     }
   ]
 }
