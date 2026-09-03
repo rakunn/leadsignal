@@ -1,12 +1,16 @@
+> Historical implementation design. For current setup and behavior, use the
+> [README](../README.md) and [public demo readiness plan](superpowers/plans/2026-09-03-public-demo-readiness.md).
+> Estimates and unchecked feature ideas below are not guarantees of shipped behavior.
+
 # LeadSignal Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan phase-by-phase. Steps use checkbox (`- [ ]`) syntax for tracking. During implementation also use: `superpowers:test-driven-development` (scoring/generator libs), `frontend-design` (UI), `dataviz` (all charts/dashboard), `verify` (before each phase commit).
 
 **Goal:** Build LeadSignal — an AI Lead Quality & Media-Buying Optimization Agent (hackathon MVP for It's Today Media) that ingests lead+campaign CSVs, deterministically scores lead quality, aggregates quality by acquisition source, and answers media-buyer questions via a Claude-powered agentic analyst — optimizing for **qualified CPL** instead of raw CPL.
 
-**Architecture:** Single Next.js 15 (App Router, TS) app on Cloud Run. Deterministic two-pass scoring in pure TypeScript at ingest time; daily-grain rollups materialized to Postgres; Claude Opus 4.8 tool-use agent grounded exclusively in typed metric tools (LLM explains, never invents numbers); Haiku 4.5 for on-demand per-lead explanations.
+**Architecture:** Single Next.js 16 (App Router, TS) app on Cloud Run. Deterministic two-pass scoring in pure TypeScript at ingest time; daily-grain rollups materialized to Postgres; Claude Opus 4.8 tool-use agent using typed metric tools (deterministic tool metrics; generated prose and impact estimates need review); Haiku 4.5 for on-demand per-lead explanations.
 
-**Tech Stack:** Next.js 15 · TypeScript (strict) · Tailwind v4 + shadcn/ui · Recharts · Papaparse · Zod · libphonenumber-js · Postgres (Cloud SQL) + Drizzle ORM (`pg` driver) · `@anthropic-ai/sdk` · Docker/Cloud Run · Artifact Registry · Secret Manager · GitHub Actions (WIF) · Vitest.
+**Tech Stack:** Next.js 16 · TypeScript (strict) · Tailwind v4 + shadcn/ui · Recharts · Papaparse · Zod · libphonenumber-js · Postgres (Cloud SQL) + Drizzle ORM (`pg` driver) · `@anthropic-ai/sdk` · Docker/Cloud Run · Artifact Registry · Secret Manager · GitHub Actions (WIF) · Vitest.
 
 ---
 
@@ -20,7 +24,7 @@ The user is applying to It's Today Media (performance-marketing/affiliate-media 
 |---|---|
 | Scoring engine | Pure TypeScript inside Next.js (no Python service) |
 | Database | **Cloud SQL Postgres** (user-confirmed) + Drizzle; no Cloud-SQL-only features so the `DATABASE_URL` can swap to Neon |
-| LLM | **Claude via direct Anthropic API** (user-confirmed): `claude-opus-4-8` analyst, `claude-haiku-4-5` explanations; Sonnet 5 = documented cost fallback for the analyst |
+| LLM | **Claude via direct Anthropic API** (user-confirmed): `claude-opus-4-8` analyst, `claude-haiku-4-5` explanations; alternative models require separately verified support and pricing |
 | Demo access | **Shared password** (user-confirmed) in middleware → signed httpOnly cookie (no accounts) |
 | Hosting | Cloud Run (Next standalone container); GitHub Actions CI/CD |
 
@@ -29,7 +33,7 @@ The user is applying to It's Today Media (performance-marketing/affiliate-media 
 - Money stored as **integer cents**, scores as **integers 0–100**, probability as `real` (Drizzle `numeric` returns strings — never use it).
 - **LLM never generates metrics.** All numbers come from deterministic TS code; Claude tools/prompts only relay and explain them.
 - Single source of truth in `src/lib/scoring/constants.ts`: **HQ lead = composite ≥ 70 AND segment ≠ 'suppress'; qualified CPL = spendCents ÷ hqLeadCount.** Scorer, rollups, generator, tests, and prompts all import it.
-- Anthropic API (verified current): Opus 4.8 → `thinking: {type:'adaptive', display:'summarized'}` set explicitly, optional `output_config:{effort:'high'}`; **never** `temperature`/`top_p`/`top_k`/`budget_tokens` (400 errors). Haiku 4.5 → no `thinking`, no `effort`. Centralize all request construction in `src/lib/anthropic.ts`. Multi-turn: echo assistant content blocks (incl. thinking) back verbatim.
+- Anthropic API configuration (verify current provider support before presenting): Opus 4.8 → `thinking: {type:'adaptive', display:'summarized'}` set explicitly, optional `output_config:{effort:'high'}`; **never** `temperature`/`top_p`/`top_k`/`budget_tokens` (400 errors). Haiku 4.5 → no `thinking`, no `effort`. Centralize all request construction in `src/lib/anthropic.ts`. Within one live tool-runner turn, preserve provider content blocks. Subsequent requests reconstruct history from stored text, not a complete block transcript.
 - No real ad-platform writes ever — "approve" only flips a status on a simulated-actions row.
 - Node 22; Next `output: 'standalone'`; middleware is edge runtime → Web Crypto only (no node `crypto`).
 - Datasets are immutable after ingest (enables materialized rollups).
@@ -73,8 +77,8 @@ docs/IMPLEMENTATION_PLAN.md        # this document, committed in Phase 0
 
 - **datasets**: `id` uuid pk · `name` · `source` enum(upload,sample) · `status` enum(processing,scoring,ready,error) · `error?` · `rowCount` · `processedCount` (progress polling) · `scoringVersion` (weights fingerprint) · `createdAt`.
 - **leads**: `id` uuid pk · `datasetId` fk cascade · raw CSV cols (`leadExternalId, createdAt, email, phone, campaign, adSet, creative, platform, landingPage, costCents, emailOpened, emailClicked, smsClicked, converted, revenueCents`) · derived (`validityScore, intentScore, valueScore, compositeScore, conversionProbability, segment` enum(high_value,nurture,test,suppress,review), `riskFlags` jsonb string[], `scoreBreakdown` jsonb per-rule receipt, `isDuplicate`, `duplicateOfLeadId?`) · Haiku cache (`explanation?, explanationModel?, explanationAt?`). Indexes: (datasetId), (datasetId,campaign), (datasetId,segment), (datasetId,compositeScore), (datasetId,createdAt).
-- **rollups** (daily grain, **additive measures only** — ratios always derived at query time): `datasetId · dimension` enum(campaign,ad_set,creative,platform,landing_page) · `dimensionValue · day · leadCount · hqLeadCount · suppressCount · spendCents · revenueCents · conversions · scoreSum` · unique(datasetId,dimension,dimensionValue,day). Materialized once at end of scoring (5 `INSERT..SELECT..GROUP BY` statements); ≤ a few thousand rows even at 100k leads → instant dashboards, small clean tool queries.
-- **agent_conversations**: id, datasetId, title, createdAt. **agent_messages**: conversationId, role, `contentJson` (verbatim Anthropic content blocks for faithful replay), `usageJson?`, createdAt.
+- **rollups** (daily grain, **additive measures only** — ratios always derived at query time): `datasetId · dimension` enum(campaign,ad_set,creative,platform,landing_page) · `dimensionValue · day · leadCount · hqLeadCount · suppressCount · spendCents · revenueCents · hqRevenueCents · conversions · scoreSum` · unique(datasetId,dimension,dimensionValue,day). Materialized once at end of scoring (5 `INSERT..SELECT..GROUP BY` statements); bounded by the accepted upload size; dimension completeness varies by uploaded fields.
+- **agent_conversations**: id, datasetId, title, createdAt. **agent_messages**: conversationId, role, `contentJson` (persisted user/assistant text; complete tool/thinking blocks are not retained for replay), `usageJson?`, createdAt.
 - **actions** (simulated audit log): datasetId, conversationId?, `type` (pause_campaign|shift_budget|pause_creative|swap_landing_page), payload jsonb, rationale, estimatedImpact jsonb, confidence, `status` enum(proposed,approved_simulated,dismissed), createdAt, resolvedAt?.
 
 ## Scoring engine (deterministic, transparent — `src/lib/scoring/`)
@@ -99,11 +103,11 @@ Pure functions, zero I/O. Every rule appends a line item to `scoreBreakdown` so 
 
 **Risk flags:** `invalid_email, disposable_email, invalid_phone, duplicate, burst_submission, no_engagement, low_value_source (value<20), high_cost_low_quality (cost>2× dataset median AND composite<40)`.
 
-Runs synchronously inside the upload/sample route handler (Cloud Run only guarantees CPU while a request is open; ~100k leads = seconds of pure TS).
+Runs synchronously inside the upload/sample route handler (Cloud Run only guarantees CPU while a request is open; bounded to 25,000 records, a 32 MiB file, and one ingestion per process).
 
 ## Synthetic dataset (`src/lib/sample-data/`)
 
-Seeded **mulberry32** PRNG (fixed seed constant) → byte-identical output. Config-driven archetypes: **~6,000 leads, 30 days ending yesterday, 5 campaigns** × platforms (Meta/TikTok/Google) × 3–4 creatives × landing pages v1–v4. Each archetype declares volume curve, cost distribution, duplicate/disposable/invalid-phone rates, burst events, open/click/sms rates, conversion rate, revenue distribution.
+Seeded **mulberry32** PRNG (fixed seed constant) → byte-identical output. Config-driven archetypes: **~6,000 leads, a stable 30-day canonical scenario shifted to the requested date, 5 campaigns** × platforms (Meta/TikTok/Google) × 3–4 creatives × landing pages v1–v4. Each archetype declares volume curve, cost distribution, duplicate/disposable/invalid-phone rates, burst events, open/click/sms rates, conversion rate, revenue distribution.
 
 **Engineered demo story (targets the scorer, asserted in CI):**
 - **Campaign A "Broad Awareness — Instant Forms"**: cost ~$1.20; ~25% dupes, ~12% disposable, ~15% invalid phone, open 12%/click 3%, 3 burst events → HQ ≈14% → **raw ≈$1.20 / qualified ≈$8.40**.
@@ -170,7 +174,7 @@ The `log_recommended_action` input schema **is** the RecommendationCard contract
 ### Phase 5 — Agentic analyst & Screen 4 (25%, Must — headline feature)
 - [ ] `src/lib/anthropic.ts` (singleton, model constants, request builders honoring Global constraints)
 - [ ] `schemas.ts` (RecommendationCard), `tools.ts` (7 tools, each a thin wrapper over rollup/lead queries), `system-prompt.ts` (persona: media-buying analyst; cite tool numbers only; end substantive answers via `log_recommended_action` when a change is warranted), `run.ts` (toolRunner + SSE encoder)
-- [ ] `app/api/analyst/route.ts` SSE endpoint + conversation persistence (verbatim content blocks incl. thinking; usage logged)
+- [ ] `app/api/analyst/route.ts` SSE endpoint + conversation persistence (user/assistant text; usage logged)
 - [ ] Screen 4 chat UI: streaming text, collapsible thinking indicator, tool-call chips, recommendation cards with Approve(simulate)/Dismiss; action log panel; suggested starter questions ("Why did lead quality decline this week?", "Which campaign should get more budget?", "What should I pause today?")
 - [ ] `POST /api/analyst/actions/[id]/approve`
 - [ ] **Verify:** the three starter questions produce correct, evidence-cited answers on the sample dataset (decline → lp-v4; budget → B/C; pause → A + burst placement); `usage.cache_read_input_tokens > 0` on turn 2; commit
@@ -214,4 +218,6 @@ The `log_recommended_action` input schema **is** the RecommendationCard contract
 
 ## Cost estimate (demo month)
 
-Cloud Run (min-instances=1) ≈ $15–30 · Cloud SQL smallest tier + 10GB ≈ $10–30 · Registry/Secrets ≈ $1 · Claude: analyst turn ≈ $0.10–0.40 (Opus 4.8, mostly cache reads) → 200 turns ≈ $30–80; Haiku ≈ $0.002/lead on-demand. **Total ≈ $60–150 active month; <$10 idle** (min-instances 0).
+Historical budget estimates are not a pricing guarantee. Before a live demo,
+verify current hosting/database tiers, model availability, token prices, and
+expected traffic. This implementation does not enforce a provider spend cap.

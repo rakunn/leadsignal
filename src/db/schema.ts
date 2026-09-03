@@ -164,7 +164,7 @@ export const agentMessages = pgTable(
       .notNull()
       .references(() => agentConversations.id, { onDelete: "cascade" }),
     role: messageRole("role").notNull(),
-    /** Verbatim Anthropic content blocks (incl. tool_use / tool_result / thinking). */
+    /** Persisted user/assistant text blocks; not a full tool/thinking transcript. */
     contentJson: jsonb("content_json").notNull(),
     usageJson: jsonb("usage_json"),
     createdAt: timestamp("created_at", { withTimezone: true })

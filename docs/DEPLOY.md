@@ -110,14 +110,19 @@ Repo → Settings → Secrets and variables → Actions → **Variables**:
 
 | Variable | Value |
 |---|---|
+| `DEPLOY_ENABLED` | `true` to explicitly enable deployment |
 | `GCP_PROJECT_ID` | PROJECT_ID |
 | `GCP_REGION` | REGION |
 | `GCP_WIF_PROVIDER` | `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/github` |
 | `GCP_SERVICE_ACCOUNT` | `leadsignal-deployer@PROJECT_ID.iam.gserviceaccount.com` |
 | `CLOUD_SQL_INSTANCE` | `PROJECT_ID:REGION:leadsignal-pg` |
 
-Every push to `main` now: lint + tests (incl. the demo-story guardrail) →
-build/push images → run migrations → deploy.
+Pull requests and non-main pushes run reusable checks independently of GCP.
+On `main`, checks must pass before an explicitly enabled deployment can run:
+lint, typecheck, unit/isolated DB tests, production and container builds →
+build/push images → run migrations → deploy. `DEPLOY_ENABLED` defaults to off;
+manual deployment is also restricted to `main`. Fork checks receive no cloud or
+provider credentials.
 
 ## Demo day
 
@@ -135,11 +140,18 @@ the raw-vs-qualified inversion → ask the analyst
 "Why did lead quality decline this week?" and watch the SSE stream hold for a
 multi-minute turn (the `--timeout 900` matters here).
 
-## Cost guardrails
+## Demo operating assumptions
 
-- Idle (min-instances 0): < $10/mo beyond Cloud SQL (~$10–30/mo `db-g1-small`).
-- Analyst turns run Claude Opus 4.8 ≈ $0.10–0.40/turn (prompt caching on);
-  explanations are Haiku ≈ $0.002/lead, cached in the DB after first request.
+Verify current provider availability, token prices, cloud tiers and expected
+traffic before presenting. The shared password controls access to one workspace;
+it does not separate visitors’ datasets. Prefer synthetic uploads. Sampled lead
+attributes, including emails, may be sent to the model provider when AI features
+are used. Approvals only update simulated records.
+
+The application admits one ingestion per process with 32 MiB files, 34 MiB total
+bodies, 25,000 records and 4,096-character cells. Platform limits can be lower;
+multiple Cloud Run instances do not share a quota. Provider spend limits, login
+throttling and broad public live-demo access need a separate deployment policy.
 
 ## Historical rollup migration and isolated tests
 
