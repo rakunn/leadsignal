@@ -1,22 +1,39 @@
 # LeadSignal
 
-**Stop optimizing for cheap leads. Start optimizing for valuable ones.**
+**Lead-quality analytics for marketing teams: turn a CSV export into explainable
+lead scores, campaign comparisons, and recommendations to review.**
 
-Media buyers can see what every campaign spends and how many leads it returns —
-but the cheapest leads are rarely the most valuable. Duplicate, disposable,
-invalid, and zero-intent leads make a campaign look great in the ads manager
-while producing nothing downstream. LeadSignal ingests lead + campaign exports,
-scores every lead with **transparent, deterministic rules**, rolls quality up
-by campaign / creative / landing page, and puts a Claude-powered analyst on top
-that helps you review where to move budget, using typed tools to inspect your data.
+A campaign can generate cheap leads that never become useful prospects.
+LeadSignal helps media buyers see that difference by combining contact validity,
+engagement, and source revenue into a transparent score for every lead.
 
-The metric that matters: **qualified CPL = spend ÷ high-quality leads.**
+**Upload a CSV → score each lead → compare campaign quality → explore the results
+with an optional Claude-powered analyst.**
 
-![Campaign quality dashboard](docs/screenshots/dashboard.png)
+- **Find wasted spend:** compare cost per lead with **qualified CPL** — spend
+  divided by leads meeting the demo's high-quality scoring threshold.
+- **Explain each score:** open a lead to see the rules, points, and risk flags
+  behind its result, including duplicates and suspicious submission bursts.
+- **Investigate a change:** compare campaigns, creatives, landing pages,
+  platforms, and ad sets; ask the analyst to inspect metrics and propose actions.
+
+This is a working full-stack showcase with a built-in synthetic dataset.
+Ingestion, scoring, dashboards, and lead inspection run **without an AI API key**.
+The optional analyst needs an Anthropic key; its recommendations and approval
+log are simulated and never change live advertising accounts.
+
+<details>
+<summary>View the campaign dashboard (mobile layout)</summary>
+
+<img src="docs/screenshots/dashboard.png" alt="Campaign dashboard showing quality metrics, campaign comparisons, and trends" width="434" />
+
+</details>
 
 ## The 3-minute demo
 
-1. **Sign in** with the shared password → **Load sample dataset** (30 days,
+After [starting the app locally](#run-it-locally):
+
+1. **Sign in** with the password you configured → **Load sample dataset** (30 days,
    5 campaigns, 6,050 leads, generated + scored live through the real
    pipeline).
 2. **Dashboard** — "Broad Awareness" looks like the winner at **$1.18 raw CPL**,
@@ -26,17 +43,28 @@ The metric that matters: **qualified CPL = spend ÷ high-quality leads.**
    the day `lp-search-v4` went live.
 3. **Leads** — click any lead: the score is a receipt, not a black box. Every
    point is a named rule (`valid phone (+25)`, `duplicate — capped at 15`).
-4. **Analyst** — ask the built-ins:
-   - *"Why did lead quality decline this week?"* → pins the lp-search-v4 launch
-     with before/after numbers.
-   - *"Which campaign should get more budget?"* → simulates the shift and logs
-     an approval card.
-   - *"What should I pause today?"* → names the burst-ridden placements.
+4. **Analyst (optional; API key required)** — try the built-in questions:
+   - *"Why did lead quality decline this week?"* — investigate the Search
+     landing-page change and compare before/after quality.
+   - *"Which campaign should get more budget?"* — compare qualified CPL and
+     revenue, then review a proposed budget change.
+   - *"What should I pause today?"* — inspect low-quality sources and risk flags.
 
-   Approving a card only flips a status in the action log — **nothing ever
-   touches a live ad account.**
+   Responses are generated and can vary. When the analyst proposes a card,
+   approving or dismissing it updates the action log for review.
 
-![Lead scoring receipt](docs/screenshots/lead-drawer.png)
+<img src="docs/screenshots/lead-drawer.png" alt="Lead scoring receipt" width="384" />
+
+## What this repository demonstrates
+
+- A deterministic TypeScript scoring pipeline with per-lead explanations,
+  bounded CSV parsing, and persisted aggregate metrics.
+- A Next.js application with server-rendered dashboards, interactive charts,
+  filtering, and detailed lead inspection backed by Postgres and Drizzle.
+- An optional AI analyst using seven typed tools, streamed responses, and
+  structured recommendation cards with a simulated approval workflow.
+- Reproducible synthetic data, unit and isolated database tests, additive
+  migrations, standalone Docker builds, and CI separated from deployment.
 
 ## How scoring works
 
@@ -115,10 +143,12 @@ quotas, and cross-instance ingestion limits are separate deployment work.
 
 Next.js 16 (App Router) · TypeScript · Tailwind v4 + shadcn/ui · Recharts ·
 Postgres + Drizzle · Anthropic TypeScript SDK (tool runner, structured
-outputs, prompt caching, SSE streaming) · Cloud Run + Cloud SQL + Secret
-Manager, GitHub Actions with Workload Identity Federation
-([deploy runbook](docs/DEPLOY.md)) · full plan in
-[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
+outputs, prompt caching, SSE streaming).
+
+Deployment configuration targets Cloud Run, Cloud SQL, and Secret Manager,
+with GitHub Actions and Workload Identity Federation. See the
+[deployment runbook](docs/DEPLOY.md), [verification record](docs/PUBLIC_DEMO_READINESS.md),
+and [original implementation plan](docs/IMPLEMENTATION_PLAN.md).
 
 ## CSV contract
 
@@ -129,9 +159,10 @@ lead_id, created_at, email, phone, campaign, ad_set, creative, platform,
 landing_page, cost, email_opened, email_clicked, sms_clicked, converted, revenue
 ```
 
-Only `created_at` and `campaign` are strictly required; everything else
-degrades gracefully (and lowers the validity score, as it should). Every row
-must still have the same number of fields as the header: quote values that
+Only `created_at` and `campaign` are strictly required. Missing contact details
+lower validity, missing engagement earns no intent points, and blank monetary
+values default to zero. Every row must still have the same number of fields as
+the header: quote values that
 contain commas, line breaks, or quotes, and do not repeat a header name after
 trimming and lowercasing.
 
@@ -159,7 +190,9 @@ unless `DEPLOY_ENABLED=true` and the required GCP variables are configured;
 see [the deployment runbook](docs/DEPLOY.md). Remaining dependency advisories
 and their scope are recorded in [DEPENDENCIES.md](docs/DEPENDENCIES.md).
 
-Before changing repository visibility, run a history-aware secret check.
+The [verification record](docs/PUBLIC_DEMO_READINESS.md#history-review-before-publication)
+includes the pre-publication Git history secret scan. Repeat it when preparing
+new content for publication.
 
 ## License
 
