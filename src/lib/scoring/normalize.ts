@@ -1,10 +1,25 @@
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const GMAIL_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
 
+/** RFC 5321's maximum mailbox length, enforced before syntax inspection. */
+export const MAX_EMAIL_LENGTH = 254;
+
 export function isEmailSyntaxValid(email: string | null): boolean {
-  return !!email && EMAIL_RE.test(email.trim());
+  if (!email) return false;
+
+  const trimmed = email.trim();
+  if (!trimmed || trimmed.length > MAX_EMAIL_LENGTH) return false;
+
+  const at = trimmed.indexOf("@");
+  if (at <= 0 || at !== trimmed.lastIndexOf("@")) return false;
+
+  const local = trimmed.slice(0, at);
+  const domain = trimmed.slice(at + 1);
+  if (!local || !domain || /\s/.test(trimmed)) return false;
+
+  const finalDot = domain.lastIndexOf(".");
+  return finalDot > 0 && domain.length - finalDot - 1 >= 2;
 }
 
 export function emailDomain(email: string): string {
