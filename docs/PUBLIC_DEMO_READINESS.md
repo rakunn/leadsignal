@@ -85,8 +85,10 @@ git log --reverse --oneline 4910d35..3d9bb55
 - Independent subagent reviews were completed; their actionable findings were
   fixed and re-reviewed. Commit consolidation preserved the reviewed file tree.
 
-GitHub-hosted workflows have not run: the branch has not been pushed. The local
-checks above exercise their build/test path, including the container regression.
+At the original local verification checkpoint, the branch had not been pushed
+and GitHub-hosted workflows had not run. The local checks above exercise their
+build/test path, including the container regression. Current hosted results
+are available on the pull request.
 No remote deployment or paid provider call was used for verification.
 
 ## Measured limits and performance
@@ -121,10 +123,17 @@ These are single local observations, not CI thresholds. Behavioral oracle and
 boundary tests verify score semantics separately. Malformed-email probes at
 8k, 16k, 32k, and 64k characters completed within isolated two-second limits.
 
+## History review before publication
+
+On 2026-09-03, Gitleaks 8.30.1 scanned all 73 reachable commits at readiness
+commit `7b5aaa9`, including `main` and local pre-squash branches, with default
+rules, no repository suppressions, and fully redacted output. It reported zero
+findings. The official scanner release was verified against its published
+SHA-256 checksum. Unreachable objects and uncommitted files were outside scope;
+repeat the check when new content is prepared for publication.
+
 ## Publication decisions still required
 
-- Complete a separate history-aware secret review before changing visibility;
-  current tracked-file checks do not certify Git history.
 - Keep live access controlled until login throttling, provider spend and
   concurrency limits, cancellation, and conversation-history policy are scoped.
   They were explicitly outside the approved technical plan.
